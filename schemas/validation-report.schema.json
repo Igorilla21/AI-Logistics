@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dynnocustoms.local/schemas/validation-report.schema.json",
+  "title": "Validation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "report_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "pack_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_rules": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "needs_review": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "total_rules",
+        "passed",
+        "failed",
+        "warnings",
+        "needs_review",
+        "skipped"
+      ]
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "validation-result.schema.json"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_id",
+    "pack_id",
+    "generated_at",
+    "summary",
+    "results"
+  ]
+}

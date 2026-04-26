@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dynnocustoms.local/schemas/document-pack.schema.json",
+  "title": "Document Pack",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "pack_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "shipment_ref": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "uploaded",
+        "classified",
+        "extracted",
+        "validated",
+        "needs_review",
+        "failed"
+      ]
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "$ref": "normalized-document.schema.json"
+      },
+      "minItems": 1
+    },
+    "declared_document_types": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/documentType"
+      },
+      "uniqueItems": true
+    },
+    "detected_document_types": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/documentType"
+      },
+      "uniqueItems": true
+    },
+    "missing_required_documents": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/documentType"
+      },
+      "uniqueItems": true
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        },
+        "case_no": {
+          "type": "string"
+        },
+        "uploaded_by": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "pack_id",
+    "created_at",
+    "status",
+    "documents"
+  ]
+}

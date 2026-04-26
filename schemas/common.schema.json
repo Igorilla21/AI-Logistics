@@ -1,0 +1,394 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dynnocustoms.local/schemas/common.schema.json",
+  "title": "Dynno Customs Common Schema Definitions",
+  "$defs": {
+    "documentType": {
+      "type": "string",
+      "enum": [
+        "contract",
+        "addendum",
+        "invoice",
+        "packing_list",
+        "coa",
+        "mbl",
+        "hbl",
+        "transport_invoice",
+        "certificate_of_origin",
+        "payment_confirmation"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "error",
+        "warning",
+        "info"
+      ]
+    },
+    "validationStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed",
+        "skipped",
+        "needs_review"
+      ]
+    },
+    "boundingBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ]
+    },
+    "fieldCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "raw_value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_snippet": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/boundingBox"
+        }
+      },
+      "required": [
+        "raw_value",
+        "confidence"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "document_type": {
+          "$ref": "#/$defs/documentType"
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "field_name": {
+          "type": "string"
+        },
+        "text_snippet": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/boundingBox"
+        }
+      },
+      "required": [
+        "document_type",
+        "page_no",
+        "text_snippet"
+      ]
+    },
+    "stringField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "raw_value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_snippet": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/boundingBox"
+        },
+        "derived": {
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fieldCandidate"
+          }
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "dateField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "string",
+          "format": "date"
+        },
+        "raw_value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": "string",
+          "format": "date"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_snippet": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/boundingBox"
+        },
+        "derived": {
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fieldCandidate"
+          }
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "decimalField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "raw_value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_snippet": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/boundingBox"
+        },
+        "derived": {
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fieldCandidate"
+          }
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "integerField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "integer"
+        },
+        "raw_value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": "integer"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_snippet": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/boundingBox"
+        },
+        "derived": {
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fieldCandidate"
+          }
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "booleanField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "boolean"
+        },
+        "raw_value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_snippet": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/boundingBox"
+        },
+        "derived": {
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fieldCandidate"
+          }
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "stringFieldArray": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stringField"
+      }
+    },
+    "lineItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "line_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "product_name_raw": {
+          "$ref": "#/$defs/stringField"
+        },
+        "product_name_normalized": {
+          "$ref": "#/$defs/stringField"
+        },
+        "quantity": {
+          "$ref": "#/$defs/decimalField"
+        },
+        "quantity_unit": {
+          "$ref": "#/$defs/stringField"
+        },
+        "unit_price": {
+          "$ref": "#/$defs/decimalField"
+        },
+        "line_total": {
+          "$ref": "#/$defs/decimalField"
+        },
+        "batch_no": {
+          "$ref": "#/$defs/stringField"
+        }
+      },
+      "required": [
+        "line_no"
+      ]
+    }
+  }
+}

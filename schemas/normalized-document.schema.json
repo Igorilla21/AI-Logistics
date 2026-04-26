@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dynnocustoms.local/schemas/normalized-document.schema.json",
+  "title": "Normalized Document",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "document_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "document_type": {
+      "$ref": "common.schema.json#/$defs/documentType"
+    },
+    "source_file_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_file_path": {
+      "type": "string"
+    },
+    "mime_type": {
+      "type": "string"
+    },
+    "pages": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "language": {
+      "type": "string"
+    },
+    "raw_text_ref": {
+      "type": "string"
+    },
+    "extraction_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "completed",
+        "partial",
+        "failed",
+        "needs_review"
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shipper_name": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "buyer_name": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "seller_name": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "consignee_name": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "manufacturer_name": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "contract_no": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "contract_date": {
+          "$ref": "common.schema.json#/$defs/dateField"
+        },
+        "addendum_no": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "addendum_date": {
+          "$ref": "common.schema.json#/$defs/dateField"
+        },
+        "invoice_no": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "invoice_date": {
+          "$ref": "common.schema.json#/$defs/dateField"
+        },
+        "payment_terms": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "incoterms": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "currency": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "container_no": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/stringField"
+            },
+            {
+              "$ref": "common.schema.json#/$defs/stringFieldArray"
+            }
+          ]
+        },
+        "gross_weight_kg": {
+          "$ref": "common.schema.json#/$defs/decimalField"
+        },
+        "net_weight_kg": {
+          "$ref": "common.schema.json#/$defs/decimalField"
+        },
+        "package_weight_kg": {
+          "$ref": "common.schema.json#/$defs/decimalField"
+        },
+        "empty_package_weight_kg": {
+          "$ref": "common.schema.json#/$defs/decimalField"
+        },
+        "pallet_weight_kg": {
+          "$ref": "common.schema.json#/$defs/decimalField"
+        },
+        "pallet_quantity": {
+          "$ref": "common.schema.json#/$defs/integerField"
+        },
+        "items_quantity": {
+          "$ref": "common.schema.json#/$defs/integerField"
+        },
+        "packages_quantity": {
+          "$ref": "common.schema.json#/$defs/integerField"
+        },
+        "package_type": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "bl_no": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "bl_date": {
+          "$ref": "common.schema.json#/$defs/dateField"
+        },
+        "batch_no": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/stringField"
+            },
+            {
+              "$ref": "common.schema.json#/$defs/stringFieldArray"
+            }
+          ]
+        },
+        "manufacture_date": {
+          "$ref": "common.schema.json#/$defs/dateField"
+        },
+        "expiry_date": {
+          "$ref": "common.schema.json#/$defs/dateField"
+        },
+        "cargo_description": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        },
+        "total_amount": {
+          "$ref": "common.schema.json#/$defs/decimalField"
+        },
+        "document_presence": {
+          "$ref": "common.schema.json#/$defs/booleanField"
+        },
+        "origin_country": {
+          "$ref": "common.schema.json#/$defs/stringField"
+        }
+      }
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/lineItem"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/evidence"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "role_source": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ocr_provider": {
+          "type": "string"
+        },
+        "source_hash_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "document_id",
+    "document_type",
+    "source_file_name",
+    "pages",
+    "fields",
+    "line_items",
+    "evidence",
+    "extraction_status"
+  ]
+}

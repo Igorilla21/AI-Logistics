@@ -1,0 +1,62 @@
+Standard document pack:
+1. Contract 
+2. Addendum to the contract
+3. Commercial Invoice
+4. Packing List
+5. Certificate of Analysis (COA)
+6. Master Bill of lading
+6a. House Bill of lading (if relevant)
+7. Transport Invoice (before the border)
+8. Certificate of Origin (CO)
+9. Payment confirmation (mt_103 or smth like that)
+ 
+
+1. Shipper name must match in all the documents: contarct, addendum, invoice, packing, manufacturer in the Certificate of Analysis (COA) and the Bill of lading HBL or MBL 
+If names do not match - show Warning
+1a. Buyer name must match in all the documents: contract, addendum, invoice, packing, and the Bill of lading HBL or MBL 
+If names do not match - show Warning.
+
+2. Contract No. in the Addendum and Invoice must match contract No. in the contract. 
+If no match - show Warning.
+
+3. there can be several positions in the Addendum.
+Product names must be the same in all the documents.
+If product names do not match - show Warning. 
+
+4. Date of Addendum later than date of Contract
+If False - show Error.
+
+5. Incoterms match in every document (FOB, FOR, FCA, EXW, DAP, CPT, CIF, CFR, CPT, DDP)
+
+6. Invoice No. matches in Invoice and Packing list
+If False - show Error
+
+7. Total cost of the goods = unit price * quantity.
+If false - show Error.
+
+8. Packing List: 
+1) must contain package type (bags/barrels etc.), quantity.
+2) Gross weight = Net weight + Package.
+3) Package weight = Gross weight - Net Weight.
+4) If pallets, then must be Gross weight with pallets.
+5) Must contain Empty bag/barrel weight
+6) Must contain packages/items quantity
+7) Gross Weight = NW+(EBW*BQ+PW*PQ)
+Where: NW - net weight; EBW - empty bag/barrel(package) weight; BQ - Bags(item) Quantity; PW - Pallet weight; PQ - Pallet Quantity.
+8) Contains Container Number. If False - Warning.
+
+9. If Addendum Payment terms shows "Prepayment", then must be payment Confirmation file (mt_103) in the document pack. 
+
+10. COA: 
+1) Must show Batch Number. If False - show Error.
+2) Must show manufacture date. If False - show Error.
+3) Must show Expiry date. If False - show Error.
+4) Manufacture Date<BL date
+5) Expiry Date > Manufacture Date. If False - show Error.
+
+11. Bill of Lading:
+1) Gross Weight in BL = Gross Weight in Packing List. 
+2) Number of packages in BL = Number of packages in Packing List
+3) Container number in BL = Container number in Packing List.
+4) Cargo description must not contain "HS code".
+
