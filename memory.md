@@ -23,6 +23,7 @@
 - `frontend` now contains a manually scaffolded React/Vite client shell for the internal web interface.
 - `docs/web-application-architecture.md` records the recommended internal web deployment model and security rationale.
 - `.gitignore` and root `README.md` were added for repository hygiene and local setup guidance.
+- `backend` now also includes in-memory `document pack` storage, file persistence into repo-local `uploads/`, and API routes to create, list, and fetch packs.
 
 ## Decisions
 
@@ -34,6 +35,7 @@
 - The extraction layer now has a document-by-document field catalog with explicit MVP Core priorities.
 - The data contract is now formalized as JSON Schema around five artifacts: common definitions, normalized document, document pack, validation result, and validation report.
 - The implementation direction is now an internal web application with a separate backend API and manually scaffolded frontend.
+- The next code layer after scaffolding is `document intake` first, before OCR and rule execution.
 
 ## Validation Scope Known So Far
 
@@ -47,6 +49,9 @@
 - `git` is available (`git version 2.54.0.windows.1`).
 - `py` launcher is available with `Python 3.13.13`.
 - `node` and `npm` were not usable in the current environment during scaffold creation, so the frontend was created manually and not executed.
+- A project-local backend virtual environment was created at `backend/.venv`.
+- `backend\\.venv\\Scripts\\python -m pip install -e backend[dev]` completed successfully.
+- `backend\\.venv\\Scripts\\python -m pytest backend/tests` passed with `2 passed`.
 
 ## Open Inputs Needed From User
 
