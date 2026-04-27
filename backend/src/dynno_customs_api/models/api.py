@@ -26,6 +26,54 @@ class DocumentPackCreatedResponse(BaseModel):
     files: list[UploadedDocument]
 
 
+class FieldValueResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    value: str | float | int | bool
+    raw_value: str | None = None
+    normalized_value: str | float | int | bool | None = None
+    confidence: float | None = None
+    page_no: int | None = None
+    text_snippet: str | None = None
+    derived: bool | None = None
+
+
+class EvidenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_type: str
+    page_no: int
+    field_name: str | None = None
+    text_snippet: str
+    confidence: float | None = None
+
+
+class NormalizedDocumentResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    schema_version: str
+    document_id: UUID
+    document_type: str
+    source_file_name: str
+    source_file_path: str | None = None
+    mime_type: str | None = None
+    pages: int
+    language: str | None = None
+    raw_text_ref: str | None = None
+    extraction_status: str
+    fields: dict
+    line_items: list[dict]
+    evidence: list[EvidenceResponse]
+    metadata: dict
+
+
+class NormalizedDocumentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pack_id: UUID
+    items: list[NormalizedDocumentResponse]
+
+
 class DocumentPackListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

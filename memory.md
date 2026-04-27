@@ -24,6 +24,7 @@
 - `docs/web-application-architecture.md` records the recommended internal web deployment model and security rationale.
 - `.gitignore` and root `README.md` were added for repository hygiene and local setup guidance.
 - `backend` now also includes in-memory `document pack` storage, file persistence into repo-local `uploads/`, and API routes to create, list, and fetch packs.
+- `backend` now includes filename-based document classification, normalized-document domain models, a stub normalization pipeline, and pack-level normalization endpoints.
 
 ## Decisions
 
@@ -36,6 +37,7 @@
 - The data contract is now formalized as JSON Schema around five artifacts: common definitions, normalized document, document pack, validation result, and validation report.
 - The implementation direction is now an internal web application with a separate backend API and manually scaffolded frontend.
 - The next code layer after scaffolding is `document intake` first, before OCR and rule execution.
+- After intake, the next implemented layer is a schema-aligned normalization stub that classifies documents by filename and emits `partial` normalized documents for downstream validation flow.
 
 ## Validation Scope Known So Far
 
@@ -52,6 +54,7 @@
 - A project-local backend virtual environment was created at `backend/.venv`.
 - `backend\\.venv\\Scripts\\python -m pip install -e backend[dev]` completed successfully.
 - `backend\\.venv\\Scripts\\python -m pytest backend/tests` passed with `2 passed`.
+- After normalization-layer changes, `backend\\.venv\\Scripts\\python -m pytest backend/tests` passed with `5 passed`.
 
 ## Open Inputs Needed From User
 

@@ -5,13 +5,19 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from dynno_customs_api.models.api import (
     DocumentPackCreatedResponse,
     DocumentPackListResponse,
+    NormalizedDocumentListResponse,
+    NormalizedDocumentResponse,
     UploadedDocument,
 )
-from dynno_customs_api.models.domain import DocumentPackRecord
+from dynno_customs_api.models.domain import DocumentPackRecord, NormalizedDocumentRecord
 from dynno_customs_api.services.document_intake import (
     create_document_pack as create_document_pack_record,
     get_document_pack,
     list_document_packs,
+)
+from dynno_customs_api.services.normalization_service import (
+    list_normalized_documents,
+    normalize_document_pack,
 )
 
 
@@ -39,6 +45,34 @@ def _to_response(pack: DocumentPackRecord) -> DocumentPackCreatedResponse:
     )
 
 
+def _to_normalized_response(document: NormalizedDocumentRecord) -> NormalizedDocumentResponse:
+    return NormalizedDocumentResponse(
+        schema_version=document.schema_version,
+        document_id=document.document_id,
+        document_type=document.document_type,
+        source_file_name=document.source_file_name,
+        source_file_path=document.source_file_path,
+        mime_type=document.mime_type,
+        pages=document.pages,
+        language=document.language,
+        raw_text_ref=document.raw_text_ref,
+        extraction_status=document.extraction_status,
+        fields=document.fields.model_dump(exclude_none=True),
+        line_items=[item.model_dump(exclude_none=True) for item in document.line_items],
+        evidence=[
+            {
+                "document_type": item.document_type,
+                "page_no": item.page_no,
+                "field_name": item.field_name,
+                "text_snippet": item.text_snippet,
+                "confidence": item.confidence,
+            }
+            for item in document.evidence
+        ],
+        metadata=document.metadata.model_dump(exclude_none=True),
+    )
+
+
 @router.post("", response_model=DocumentPackCreatedResponse)
 async def create_document_pack(files: list[UploadFile] | None = File(default=None)) -> DocumentPackCreatedResponse:
     pack = await create_document_pack_record(files or [])
@@ -56,3 +90,25 @@ async def get_document_pack_by_id(pack_id: UUID) -> DocumentPackCreatedResponse:
     if pack is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")
     return _to_response(pack)
+
+
+@router.post("/{pack_id}/normalize", response_model=NormalizedDocumentListResponse)
+async def normalize_pack(pack_id: UUID) -> NormalizedDocumentListResponse:
+    pack = normalize_document_pack(pack_id)
+    if pack is None:
+        raise HTTPException(status_code=404, detail="Document pack not found.")
+    return NormalizedDocumentListResponse(
+        pack_id=pack_id,
+        items=[_to_normalized_response(item) for item in pack.normalized_documents],
+    )
+
+
+@router.get("/{pack_id}/normalized-documents", response_model=NormalizedDocumentListResponse)
+async def get_normalized_documents(pack_id: UUID) -> NormalizedDocumentListResponse:
+    items = list_normalized_documents(pack_id)
+    if items is None:
+        raise HTTPException(status_code=404, detail="Document pack not found.")
+    return NormalizedDocumentListResponse(
+        pack_id=pack_id,
+        items=[_to_normalized_response(item) for item in items],
+    )
