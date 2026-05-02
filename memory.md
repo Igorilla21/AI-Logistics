@@ -27,6 +27,9 @@
 - `backend` now includes filename-based document classification, normalized-document domain models, a stub normalization pipeline, and pack-level normalization endpoints.
 - `backend/src/dynno_customs_api/services/rule_engine_runner.py` implements the validation rule runner for rules `R001` through `R027`.
 - `POST /api/validation/reports/{pack_id}` runs the rule engine for a document pack, auto-runs the current normalization stub when needed, returns a validation report, and updates pack status to `validated`, `needs_review`, or `failed`.
+- `backend/pyproject.toml` now includes OCR-related dependencies: `pytesseract`, `Pillow`, and `PyMuPDF`.
+- `backend/src/dynno_customs_api/config.py` now defines OCR settings for Tesseract command, OCR languages, PDF render DPI, OCR temp dir, and OCR output dir.
+- `backend/src/dynno_customs_api/services/tesseract_ocr.py` implements the Tesseract OCR adapter for stored PDF and image documents, returning page-level raw text and OCR confidence.
 
 ## Decisions
 
@@ -60,6 +63,12 @@
 - `backend\\.venv\\Scripts\\python -m pip install -e backend[dev]` completed successfully.
 - `backend\\.venv\\Scripts\\python -m pytest backend/tests` passed with `2 passed`.
 - After rule-engine runner changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `8 passed`.
+- Tesseract OCR is installed at `C:\Program Files\Tesseract-OCR\tesseract.exe`.
+- Tesseract version check returned `5.5.0.20241111`; available languages include `eng`, `rus`, `chi_sim`, `chi_tra`, `osd`, and `equ`.
+- After installing OCR dependencies into `backend/.venv`, imports for `pytesseract`, `Pillow`, and `PyMuPDF` succeeded and `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `8 passed`.
+- OCR config defaults resolved `settings.tesseract_cmd` to `C:\Program Files\Tesseract-OCR\tesseract.exe`, `settings.ocr_langs` to `eng+rus`, `settings.ocr_temp_dir` to repo-local `.tmp\ocr`, `settings.ocr_output_dir` to repo-local `storage\ocr`, and `settings.ocr_pdf_dpi` to `300`.
+- After OCR config changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `10 passed`.
+- After Tesseract OCR adapter changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `13 passed`.
 
 ## Open Inputs Needed From User
 

@@ -11,6 +11,8 @@ from dynno_customs_api.config import settings
 async def lifespan(_: FastAPI):
     settings.temp_dir.mkdir(parents=True, exist_ok=True)
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+    settings.ocr_temp_dir.mkdir(parents=True, exist_ok=True)
+    settings.ocr_output_dir.mkdir(parents=True, exist_ok=True)
     yield
 
 

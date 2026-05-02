@@ -200,6 +200,34 @@ class DocumentFileRecord(BaseModel):
     sha256: str
 
 
+OcrStatus = Literal["completed", "failed"]
+
+
+class OcrPageResultRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    page_no: int = Field(ge=1)
+    text: str
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    image_width: int | None = Field(default=None, ge=1)
+    image_height: int | None = Field(default=None, ge=1)
+
+
+class OcrDocumentResultRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: UUID
+    source_file_name: str
+    source_file_path: str
+    provider: str
+    languages: str
+    status: OcrStatus
+    pages: list[OcrPageResultRecord] = Field(default_factory=list)
+    raw_text: str = ""
+    error_message: str | None = None
+    created_at: datetime
+
+
 class DocumentPackRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
