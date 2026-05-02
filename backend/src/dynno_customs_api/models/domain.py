@@ -236,6 +236,7 @@ class DocumentPackRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     files: list[DocumentFileRecord]
+    ocr_results: list[OcrDocumentResultRecord] = Field(default_factory=list)
     normalized_documents: list[NormalizedDocumentRecord] = Field(default_factory=list)
 
 

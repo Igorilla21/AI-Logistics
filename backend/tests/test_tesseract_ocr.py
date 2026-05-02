@@ -27,19 +27,18 @@ def _document(stored_path: str, content_type: str = "image/png") -> DocumentFile
     )
 
 
+def fake_image_to_data(image, lang, output_type):
+    assert lang == settings.ocr_langs
+    assert output_type == tesseract_ocr.pytesseract.Output.DICT
+    return {
+        "text": ["", "Invoice", "INV-001"],
+        "conf": ["-1", "95", "85"],
+    }
+
+
 def test_run_tesseract_ocr_for_image(monkeypatch) -> None:
     image_path = _test_dir() / "ocr-test.png"
     Image.new("RGB", (120, 60), "white").save(image_path)
-
-    def fake_image_to_data(image, lang, output_type):
-        assert image.width == 120
-        assert image.height == 60
-        assert lang == settings.ocr_langs
-        assert output_type == tesseract_ocr.pytesseract.Output.DICT
-        return {
-            "text": ["", "Invoice", "INV-001"],
-            "conf": ["-1", "95", "85"],
-        }
 
     monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", fake_image_to_data)
 

@@ -75,6 +75,38 @@ class NormalizedDocumentListResponse(BaseModel):
     items: list[NormalizedDocumentResponse]
 
 
+class OcrPageResultResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    page_no: int
+    text: str
+    confidence: float | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+
+
+class OcrDocumentResultResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: UUID
+    source_file_name: str
+    source_file_path: str
+    provider: str
+    languages: str
+    status: str
+    pages: list[OcrPageResultResponse]
+    raw_text: str
+    error_message: str | None = None
+    created_at: datetime
+
+
+class OcrDocumentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pack_id: UUID
+    items: list[OcrDocumentResultResponse]
+
+
 class DocumentPackListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

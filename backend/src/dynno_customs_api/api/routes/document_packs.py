@@ -7,9 +7,12 @@ from dynno_customs_api.models.api import (
     DocumentPackListResponse,
     NormalizedDocumentListResponse,
     NormalizedDocumentResponse,
+    OcrDocumentListResponse,
+    OcrDocumentResultResponse,
+    OcrPageResultResponse,
     UploadedDocument,
 )
-from dynno_customs_api.models.domain import DocumentPackRecord, NormalizedDocumentRecord
+from dynno_customs_api.models.domain import DocumentPackRecord, NormalizedDocumentRecord, OcrDocumentResultRecord
 from dynno_customs_api.services.document_intake import (
     create_document_pack as create_document_pack_record,
     get_document_pack,
@@ -19,6 +22,7 @@ from dynno_customs_api.services.normalization_service import (
     list_normalized_documents,
     normalize_document_pack,
 )
+from dynno_customs_api.services.ocr_service import list_ocr_results, run_ocr_for_document_pack
 
 
 router = APIRouter()
@@ -73,6 +77,30 @@ def _to_normalized_response(document: NormalizedDocumentRecord) -> NormalizedDoc
     )
 
 
+def _to_ocr_response(result: OcrDocumentResultRecord) -> OcrDocumentResultResponse:
+    return OcrDocumentResultResponse(
+        document_id=result.document_id,
+        source_file_name=result.source_file_name,
+        source_file_path=result.source_file_path,
+        provider=result.provider,
+        languages=result.languages,
+        status=result.status,
+        pages=[
+            OcrPageResultResponse(
+                page_no=page.page_no,
+                text=page.text,
+                confidence=page.confidence,
+                image_width=page.image_width,
+                image_height=page.image_height,
+            )
+            for page in result.pages
+        ],
+        raw_text=result.raw_text,
+        error_message=result.error_message,
+        created_at=result.created_at,
+    )
+
+
 @router.post("", response_model=DocumentPackCreatedResponse)
 async def create_document_pack(files: list[UploadFile] | None = File(default=None)) -> DocumentPackCreatedResponse:
     pack = await create_document_pack_record(files or [])
@@ -90,6 +118,28 @@ async def get_document_pack_by_id(pack_id: UUID) -> DocumentPackCreatedResponse:
     if pack is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")
     return _to_response(pack)
+
+
+@router.post("/{pack_id}/ocr", response_model=OcrDocumentListResponse)
+async def run_ocr_for_pack(pack_id: UUID) -> OcrDocumentListResponse:
+    pack = run_ocr_for_document_pack(pack_id)
+    if pack is None:
+        raise HTTPException(status_code=404, detail="Document pack not found.")
+    return OcrDocumentListResponse(
+        pack_id=pack_id,
+        items=[_to_ocr_response(item) for item in pack.ocr_results],
+    )
+
+
+@router.get("/{pack_id}/ocr-results", response_model=OcrDocumentListResponse)
+async def get_ocr_results(pack_id: UUID) -> OcrDocumentListResponse:
+    items = list_ocr_results(pack_id)
+    if items is None:
+        raise HTTPException(status_code=404, detail="Document pack not found.")
+    return OcrDocumentListResponse(
+        pack_id=pack_id,
+        items=[_to_ocr_response(item) for item in items],
+    )
 
 
 @router.post("/{pack_id}/normalize", response_model=NormalizedDocumentListResponse)

@@ -30,6 +30,9 @@ $env:DYNNO_TESSERACT_CMD = "C:\Program Files\Tesseract-OCR\tesseract.exe"
 The OCR adapter service is implemented in `dynno_customs_api.services.tesseract_ocr`.
 It accepts stored PDF/image document records and returns page-level raw text with OCR confidence.
 
+- `POST /api/document-packs/{pack_id}/ocr` runs OCR for all files in a document pack.
+- `GET /api/document-packs/{pack_id}/ocr-results` returns the latest in-memory OCR results for the pack.
+
 ## Validation
 
 - `POST /api/validation/reports/{pack_id}` runs validation rules against a document pack.

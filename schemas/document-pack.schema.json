@@ -29,6 +29,8 @@
       "enum": [
         "uploaded",
         "classified",
+        "ocr_completed",
+        "ocr_failed",
         "extracted",
         "validated",
         "needs_review",

@@ -30,6 +30,8 @@
 - `backend/pyproject.toml` now includes OCR-related dependencies: `pytesseract`, `Pillow`, and `PyMuPDF`.
 - `backend/src/dynno_customs_api/config.py` now defines OCR settings for Tesseract command, OCR languages, PDF render DPI, OCR temp dir, and OCR output dir.
 - `backend/src/dynno_customs_api/services/tesseract_ocr.py` implements the Tesseract OCR adapter for stored PDF and image documents, returning page-level raw text and OCR confidence.
+- `backend/src/dynno_customs_api/services/ocr_service.py` runs OCR for all files in a document pack and stores the latest OCR results in the in-memory document pack record.
+- `POST /api/document-packs/{pack_id}/ocr` runs OCR for a document pack; `GET /api/document-packs/{pack_id}/ocr-results` returns the pack's latest OCR results.
 
 ## Decisions
 
@@ -46,6 +48,8 @@
 - The rule-engine runner treats `hbl` as the preferred bill of lading document when both `hbl` and `mbl` are present; otherwise it uses `mbl`.
 - Rule results use the existing validation statuses: `passed`, `failed`, `skipped`, and `needs_review`; summary `warnings` counts failed warning-severity results.
 - Rule `R015` is intentionally skipped until `has_pallets` or an equivalent pallet applicability signal is added to the normalized schema.
+- OCR endpoint execution currently runs synchronously and stores results in memory; file-backed raw text persistence remains the next step.
+- Document pack status now includes `ocr_completed` and `ocr_failed` in the JSON Schema.
 
 ## Validation Scope Known So Far
 
@@ -69,6 +73,7 @@
 - OCR config defaults resolved `settings.tesseract_cmd` to `C:\Program Files\Tesseract-OCR\tesseract.exe`, `settings.ocr_langs` to `eng+rus`, `settings.ocr_temp_dir` to repo-local `.tmp\ocr`, `settings.ocr_output_dir` to repo-local `storage\ocr`, and `settings.ocr_pdf_dpi` to `300`.
 - After OCR config changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `10 passed`.
 - After Tesseract OCR adapter changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `13 passed`.
+- After OCR endpoint changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `17 passed`.
 
 ## Open Inputs Needed From User
 
