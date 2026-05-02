@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UploadedDocument(BaseModel):
@@ -91,6 +92,22 @@ class ValidationSummary(BaseModel):
     skipped: int
 
 
+class ValidationResultResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_code: str = Field(pattern=r"^R\d{3}$")
+    severity: str
+    status: str
+    message: str
+    documents: list[str]
+    fields: list[str]
+    observed_values: dict[str, Any]
+    expected_values: dict[str, Any] | None = None
+    evidence: list[EvidenceResponse]
+    confidence: float | None = None
+    created_at: datetime
+
+
 class ValidationReportResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -99,4 +116,4 @@ class ValidationReportResponse(BaseModel):
     pack_id: UUID
     generated_at: datetime
     summary: ValidationSummary
-    results: list[dict]
+    results: list[ValidationResultResponse]

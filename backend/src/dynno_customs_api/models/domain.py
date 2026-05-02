@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -208,3 +209,45 @@ class DocumentPackRecord(BaseModel):
     updated_at: datetime
     files: list[DocumentFileRecord]
     normalized_documents: list[NormalizedDocumentRecord] = Field(default_factory=list)
+
+
+ValidationSeverity = Literal["error", "warning", "info"]
+ValidationStatus = Literal["passed", "failed", "skipped", "needs_review"]
+
+
+class ValidationResultRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_code: str = Field(pattern=r"^R\d{3}$")
+    severity: ValidationSeverity
+    status: ValidationStatus
+    message: str = Field(min_length=1)
+    documents: list[str] = Field(min_length=1)
+    fields: list[str] = Field(min_length=1)
+    observed_values: dict[str, Any] = Field(default_factory=dict)
+    expected_values: dict[str, Any] | None = None
+    evidence: list[EvidenceRecord] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    created_at: datetime
+
+
+class ValidationSummaryRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total_rules: int
+    passed: int
+    failed: int
+    warnings: int
+    needs_review: int
+    skipped: int
+
+
+class ValidationReportRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = "1.0.0"
+    report_id: UUID
+    pack_id: UUID
+    generated_at: datetime
+    summary: ValidationSummaryRecord
+    results: list[ValidationResultRecord]

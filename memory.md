@@ -19,12 +19,14 @@
 - `docs/field-catalog.md` defines the extraction field catalog by document type, label variants, data types, v1 requiredness, examples, and extraction notes.
 - `schemas/common.schema.json`, `schemas/normalized-document.schema.json`, `schemas/document-pack.schema.json`, `schemas/validation-result.schema.json`, and `schemas/validation-report.schema.json` define the first machine-readable JSON contracts for extraction and validation flows.
 - `docs/json-schema-overview.md` summarizes the role of the JSON schemas in the pipeline.
-- `backend` now contains a FastAPI scaffold with health, schema registry, document-pack, and mock validation endpoints.
+- `backend` now contains a FastAPI scaffold with health, schema registry, document-pack, mock validation, and rule-engine validation endpoints.
 - `frontend` now contains a manually scaffolded React/Vite client shell for the internal web interface.
 - `docs/web-application-architecture.md` records the recommended internal web deployment model and security rationale.
 - `.gitignore` and root `README.md` were added for repository hygiene and local setup guidance.
 - `backend` now also includes in-memory `document pack` storage, file persistence into repo-local `uploads/`, and API routes to create, list, and fetch packs.
 - `backend` now includes filename-based document classification, normalized-document domain models, a stub normalization pipeline, and pack-level normalization endpoints.
+- `backend/src/dynno_customs_api/services/rule_engine_runner.py` implements the validation rule runner for rules `R001` through `R027`.
+- `POST /api/validation/reports/{pack_id}` runs the rule engine for a document pack, auto-runs the current normalization stub when needed, returns a validation report, and updates pack status to `validated`, `needs_review`, or `failed`.
 
 ## Decisions
 
@@ -38,6 +40,9 @@
 - The implementation direction is now an internal web application with a separate backend API and manually scaffolded frontend.
 - The next code layer after scaffolding is `document intake` first, before OCR and rule execution.
 - After intake, the next implemented layer is a schema-aligned normalization stub that classifies documents by filename and emits `partial` normalized documents for downstream validation flow.
+- The rule-engine runner treats `hbl` as the preferred bill of lading document when both `hbl` and `mbl` are present; otherwise it uses `mbl`.
+- Rule results use the existing validation statuses: `passed`, `failed`, `skipped`, and `needs_review`; summary `warnings` counts failed warning-severity results.
+- Rule `R015` is intentionally skipped until `has_pallets` or an equivalent pallet applicability signal is added to the normalized schema.
 
 ## Validation Scope Known So Far
 
@@ -54,7 +59,7 @@
 - A project-local backend virtual environment was created at `backend/.venv`.
 - `backend\\.venv\\Scripts\\python -m pip install -e backend[dev]` completed successfully.
 - `backend\\.venv\\Scripts\\python -m pytest backend/tests` passed with `2 passed`.
-- After normalization-layer changes, `backend\\.venv\\Scripts\\python -m pytest backend/tests` passed with `5 passed`.
+- After rule-engine runner changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `8 passed`.
 
 ## Open Inputs Needed From User
 

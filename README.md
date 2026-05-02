@@ -46,3 +46,4 @@ When Node.js is available:
 - Field catalog documented
 - JSON Schemas defined
 - Initial backend/frontend scaffold created
+- Backend rule engine runner implemented for validation rules `R001`-`R027`
