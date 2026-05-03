@@ -32,6 +32,7 @@ It accepts stored PDF/image document records and returns page-level raw text wit
 
 - `POST /api/document-packs/{pack_id}/ocr` runs OCR for all files in a document pack.
 - `GET /api/document-packs/{pack_id}/ocr-results` returns the latest in-memory OCR results for the pack.
+- Completed OCR runs persist raw text under `storage/ocr/{pack_id}/{document_id}.txt` and expose that path as `raw_text_ref`.
 
 ## Validation
 

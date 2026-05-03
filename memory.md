@@ -32,6 +32,7 @@
 - `backend/src/dynno_customs_api/services/tesseract_ocr.py` implements the Tesseract OCR adapter for stored PDF and image documents, returning page-level raw text and OCR confidence.
 - `backend/src/dynno_customs_api/services/ocr_service.py` runs OCR for all files in a document pack and stores the latest OCR results in the in-memory document pack record.
 - `POST /api/document-packs/{pack_id}/ocr` runs OCR for a document pack; `GET /api/document-packs/{pack_id}/ocr-results` returns the pack's latest OCR results.
+- Completed OCR runs now persist raw text files under repo-local `storage/ocr/{pack_id}/{document_id}.txt` and expose that path as `raw_text_ref`.
 
 ## Decisions
 
@@ -48,8 +49,10 @@
 - The rule-engine runner treats `hbl` as the preferred bill of lading document when both `hbl` and `mbl` are present; otherwise it uses `mbl`.
 - Rule results use the existing validation statuses: `passed`, `failed`, `skipped`, and `needs_review`; summary `warnings` counts failed warning-severity results.
 - Rule `R015` is intentionally skipped until `has_pallets` or an equivalent pallet applicability signal is added to the normalized schema.
-- OCR endpoint execution currently runs synchronously and stores results in memory; file-backed raw text persistence remains the next step.
+- OCR endpoint execution currently runs synchronously and stores OCR result metadata in memory; raw OCR text is persisted to repo-local files.
 - Document pack status now includes `ocr_completed` and `ocr_failed` in the JSON Schema.
+- For the observed sample commercial invoice, `QRT-SOH` is the customs-relevant contract number, `ADD 68` is the addendum number, and `RT260004` is a Sales Contract number that is not needed for customs validation.
+- Invoice unit price values like `CNY9.1000/MT` mean `9100 CNY` per metric ton.
 
 ## Validation Scope Known So Far
 
@@ -74,10 +77,11 @@
 - After OCR config changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `10 passed`.
 - After Tesseract OCR adapter changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `13 passed`.
 - After OCR endpoint changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `17 passed`.
+- After OCR raw-text persistence changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `18 passed`.
 
 ## Open Inputs Needed From User
 
 - Real sample documents or anonymized equivalents.
 - Exact validation rules per document and cross-document comparison rules.
 - Cost-calculation formula, tariff inputs, and route/TN VED-specific exceptions. User plans to provide FOB formula later.
-- Still needs clarification on HBL vs MBL priority, product-name comparison strictness, numeric tolerances, buyer vs consignee mapping in BL, and container-number applicability.
+- Still needs clarification on product-name comparison strictness, numeric tolerances, buyer vs consignee mapping in BL, and container-number applicability.

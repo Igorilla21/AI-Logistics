@@ -96,6 +96,7 @@ def _to_ocr_response(result: OcrDocumentResultRecord) -> OcrDocumentResultRespon
             for page in result.pages
         ],
         raw_text=result.raw_text,
+        raw_text_ref=result.raw_text_ref,
         error_message=result.error_message,
         created_at=result.created_at,
     )

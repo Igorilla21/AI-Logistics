@@ -96,6 +96,7 @@ class OcrDocumentResultResponse(BaseModel):
     status: str
     pages: list[OcrPageResultResponse]
     raw_text: str
+    raw_text_ref: str | None = None
     error_message: str | None = None
     created_at: datetime
 

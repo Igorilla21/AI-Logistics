@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from dynno_customs_api.models.domain import DocumentFileRecord, DocumentPackRecord, OcrDocumentResultRecord, OcrPageResultRecord
+from dynno_customs_api.config import ROOT_DIR
 from dynno_customs_api.services.document_pack_store import InMemoryDocumentPackStore
 from dynno_customs_api.services import ocr_service
 
@@ -53,6 +54,8 @@ def test_run_ocr_for_document_pack_updates_pack_with_results(monkeypatch) -> Non
 
     assert updated_pack.status == "ocr_completed"
     assert updated_pack.ocr_results[0].raw_text == "Invoice INV-001"
+    assert updated_pack.ocr_results[0].raw_text_ref == f"storage\\ocr\\{pack.pack_id}\\{document.document_id}.txt"
+    assert (ROOT_DIR / updated_pack.ocr_results[0].raw_text_ref).read_text(encoding="utf-8") == "Invoice INV-001"
     assert store.get(pack.pack_id).ocr_results == updated_pack.ocr_results
 
 

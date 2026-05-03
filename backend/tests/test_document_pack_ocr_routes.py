@@ -40,6 +40,7 @@ def test_document_pack_ocr_endpoints(monkeypatch) -> None:
     assert ocr_body["pack_id"] == pack_id
     assert ocr_body["items"][0]["status"] == "completed"
     assert ocr_body["items"][0]["raw_text"] == "Invoice INV-001"
+    assert ocr_body["items"][0]["raw_text_ref"].startswith("storage")
     assert document_pack_store.get(UUID(pack_id)).status == "ocr_completed"
 
     get_response = client.get(f"/api/document-packs/{pack_id}/ocr-results")

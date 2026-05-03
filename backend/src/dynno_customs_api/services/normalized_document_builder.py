@@ -17,6 +17,9 @@ def build_normalized_document_stub(
     stored_path: str,
     content_type: str,
     sha256: str,
+    raw_text_ref: str | None = None,
+    pages: int = 1,
+    ocr_provider: str = "stub",
 ) -> NormalizedDocumentRecord:
     classified = classify_document(file_name, content_type)
 
@@ -53,15 +56,15 @@ def build_normalized_document_stub(
         source_file_name=file_name,
         source_file_path=stored_path,
         mime_type=content_type,
-        pages=1,
+        pages=pages,
         language="unknown",
-        raw_text_ref=stored_path,
+        raw_text_ref=raw_text_ref,
         extraction_status="partial",
         fields=fields,
         line_items=[],
         evidence=evidence,
         metadata=NormalizedDocumentMetadataRecord(
-            ocr_provider="stub",
+            ocr_provider=ocr_provider,
             source_hash_sha256=sha256,
             classifier=classified.classifier,
             classifier_confidence=classified.confidence,

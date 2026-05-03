@@ -224,6 +224,7 @@ class OcrDocumentResultRecord(BaseModel):
     status: OcrStatus
     pages: list[OcrPageResultRecord] = Field(default_factory=list)
     raw_text: str = ""
+    raw_text_ref: str | None = None
     error_message: str | None = None
     created_at: datetime
 
