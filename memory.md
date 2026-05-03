@@ -33,6 +33,7 @@
 - `backend/src/dynno_customs_api/services/ocr_service.py` runs OCR for all files in a document pack and stores the latest OCR results in the in-memory document pack record.
 - `POST /api/document-packs/{pack_id}/ocr` runs OCR for a document pack; `GET /api/document-packs/{pack_id}/ocr-results` returns the pack's latest OCR results.
 - Completed OCR runs now persist raw text files under repo-local `storage/ocr/{pack_id}/{document_id}.txt` and expose that path as `raw_text_ref`.
+- `backend/src/dynno_customs_api/services/text_extractor.py` implements the first OCR-text extractor for invoice, packing list, and bill of lading MVP fields.
 
 ## Decisions
 
@@ -53,6 +54,7 @@
 - Document pack status now includes `ocr_completed` and `ocr_failed` in the JSON Schema.
 - For the observed sample commercial invoice, `QRT-SOH` is the customs-relevant contract number, `ADD 68` is the addendum number, and `RT260004` is a Sales Contract number that is not needed for customs validation.
 - Invoice unit price values like `CNY9.1000/MT` mean `9100 CNY` per metric ton.
+- Extractor v1 intentionally ignores Sales Contract number `RT260004` and maps invoice unit price `CNY9.1000/MT` to `9100.0 CNY/MT` while converting `18000.00KG` to `18.0 MT` for invoice arithmetic.
 
 ## Validation Scope Known So Far
 
@@ -78,6 +80,7 @@
 - After Tesseract OCR adapter changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `13 passed`.
 - After OCR endpoint changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `17 passed`.
 - After OCR raw-text persistence changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `18 passed`.
+- After extractor v1 changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `22 passed`.
 
 ## Open Inputs Needed From User
 

@@ -8,6 +8,7 @@ from dynno_customs_api.models.domain import (
     StringFieldRecord,
 )
 from dynno_customs_api.services.document_classifier import classify_document
+from dynno_customs_api.services.text_extractor import extract_fields, read_raw_text
 
 
 def build_normalized_document_stub(
@@ -23,7 +24,8 @@ def build_normalized_document_stub(
 ) -> NormalizedDocumentRecord:
     classified = classify_document(file_name, content_type)
 
-    fields = NormalizedDocumentFieldsRecord()
+    raw_text = read_raw_text(raw_text_ref)
+    fields, line_items = extract_fields(classified.document_type, raw_text)
     evidence = [
         EvidenceRecord(
             document_type=classified.document_type,
@@ -34,12 +36,12 @@ def build_normalized_document_stub(
         )
     ]
 
-    # Keep the stub intentionally conservative: only add fields we can infer from the filename.
+    # Keep the fallback conservative: only add fields we can infer from the filename.
     lowered_name = file_name.lower()
     if "prepayment" in lowered_name or "payment" in lowered_name or "mt103" in lowered_name:
         fields.document_presence = None
 
-    if classified.document_type in {"invoice", "packing_list"}:
+    if classified.document_type in {"invoice", "packing_list"} and fields.invoice_no is None:
         fields.invoice_no = StringFieldRecord(
             value=file_name,
             raw_value=file_name,
@@ -61,7 +63,7 @@ def build_normalized_document_stub(
         raw_text_ref=raw_text_ref,
         extraction_status="partial",
         fields=fields,
-        line_items=[],
+        line_items=line_items,
         evidence=evidence,
         metadata=NormalizedDocumentMetadataRecord(
             ocr_provider=ocr_provider,
