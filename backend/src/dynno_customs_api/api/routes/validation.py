@@ -15,6 +15,7 @@ from dynno_customs_api.services.document_intake import get_document_pack
 from dynno_customs_api.services.document_pack_store import document_pack_store
 from dynno_customs_api.services.normalization_service import normalize_document_pack
 from dynno_customs_api.services.rule_engine_runner import derive_pack_status, run_rule_engine
+from dynno_customs_api.services.validation_report_store import validation_report_store
 
 
 router = APIRouter()
@@ -93,4 +94,5 @@ async def create_validation_report(pack_id: UUID) -> ValidationReportResponse:
         }
     )
     document_pack_store.save(updated_pack)
+    validation_report_store.save(report)
     return _to_response(report)

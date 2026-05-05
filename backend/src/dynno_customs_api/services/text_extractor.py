@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dynno_customs_api.config import ROOT_DIR
 from dynno_customs_api.models.domain import (
+    BooleanFieldRecord,
     DateFieldRecord,
     DecimalFieldRecord,
     IntegerFieldRecord,
@@ -109,6 +110,52 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
         fields.gross_weight_kg = _decimal_field(text, r"\bBag\s+\d+\s+(\d[\d\s.,]*)\s+\d+\s+Container", "gross_weight_kg")
         fields.bl_date = _date_field(text, r"\bSHIPPED ON BOARD\s+(\d{1,2}\.\d{1,2}\.\d{2,4})", "bl_date")
 
+    elif document_type == "addendum":
+        fields.addendum_no = _addendum_no_field(text)
+        fields.addendum_date = _date_field(
+            text,
+            r"\bADDENDUM\s*(?:№|N[eo])\s*\d+\s+dated\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
+            "addendum_date",
+        )
+        fields.contract_no = _string_field(
+            text,
+            r"\bContract\s+(?:№|N[eo])\s+([A-Z]{2,}-[A-Z0-9]+)\s+dated\b",
+            "contract_no",
+        )
+        fields.contract_date = _date_field(
+            text,
+            r"\bContract\s+(?:№|N[eo])\s+[A-Z]{2,}-[A-Z0-9]+\s+dated\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
+            "contract_date",
+        )
+        fields.seller_name = _company_field(text, r"\b(Qingdao\s+Raitte\s+Technologies\s+Co\.?\s*,?\s*Ltd\.?)", "seller_name")
+        fields.buyer_name = _company_field(text, r"\band\s+(Soyuzopthim\s+Ltd\.?)\s*,", "buyer_name")
+        fields.incoterms = _string_field(text, r"\bon\s+(FOB|FOR|FCA|EXW|DAP|CPT|CIF|CFR|DDP)\s*,?\s*Qingdao", "incoterms")
+        fields.payment_terms = _payment_terms_field(text)
+
+    elif document_type == "coa":
+        fields.invoice_no = _string_field(text, r"\bINVOICE\s+NO\.?:\s*([A-Z0-9-]+)", "invoice_no")
+        fields.batch_no = _string_field(text, r"\bBATCH\s+NO\.?:\s*([A-Z0-9-]+)", "batch_no")
+        fields.manufacture_date = _date_field(
+            text, r"\bMANUFACTURE\s+DATE:\s*([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})", "manufacture_date"
+        )
+        fields.expiry_date = _date_field(text, r"\bEXPIRY\s+DATE:\s*([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})", "expiry_date")
+
+    elif document_type == "payment_confirmation":
+        fields.document_presence = BooleanFieldRecord(
+            value=True,
+            raw_value="payment confirmation document present",
+            normalized_value=True,
+            confidence=0.95,
+            page_no=1,
+            text_snippet="Payment confirmation document was uploaded and OCR completed.",
+            derived=True,
+        )
+        fields.buyer_name = _company_field(text, r"\bOrdering Customer.+?\s+(SOYUZOPTHIM LTD)\s+", "buyer_name")
+        fields.seller_name = _company_field(text, r"\b(QINGDAO RAITTE TECHNOLOGIES CO\.?\s*,?\s*LTD\.?)\s+", "seller_name")
+        fields.contract_no = _string_field(text, r"\bCONTRACT\s+([A-Z]{2,}-[A-Z0-9]+)\b", "contract_no")
+        fields.addendum_no = _string_field(text, r"\b(ADD\s+68)\b", "addendum_no")
+        fields.currency = _string_field(text, r"\b(CNY)\b", "currency")
+
     return fields, line_items
 
 
@@ -193,6 +240,40 @@ def _integer_field(text: str, pattern: str, field_name: str, confidence: float =
         raw_value=raw_value,
         normalized_value=value,
         confidence=confidence,
+        page_no=1,
+        text_snippet=_snippet(match),
+    )
+
+
+def _addendum_no_field(text: str) -> StringFieldRecord | None:
+    match = re.search(r"\bADDENDUM\s*(?:№|N[eo])\s*(\d+)\b", text, re.IGNORECASE)
+    if not match:
+        return None
+    value = f"ADD {match.group(1)}"
+    return StringFieldRecord(
+        value=value,
+        raw_value=_collapse_spaces(match.group(0)),
+        normalized_value=_normalize_string(value),
+        confidence=0.86,
+        page_no=1,
+        text_snippet=_snippet(match),
+    )
+
+
+def _payment_terms_field(text: str) -> StringFieldRecord | None:
+    match = re.search(
+        r"\bPayment\s+for\s+the\s+Goods\s+should\s+be\s+done.+?:\s*(.+?)\s+The\s+date\s+of\s+shipment\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    raw_value = _collapse_spaces(match.group(1))
+    return StringFieldRecord(
+        value=raw_value,
+        raw_value=raw_value,
+        normalized_value=_normalize_string(raw_value),
+        confidence=0.82,
         page_no=1,
         text_snippet=_snippet(match),
     )

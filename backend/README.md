@@ -33,10 +33,12 @@ It accepts stored PDF/image document records and returns page-level raw text wit
 - `POST /api/document-packs/{pack_id}/ocr` runs OCR for all files in a document pack.
 - `GET /api/document-packs/{pack_id}/ocr-results` returns the latest in-memory OCR results for the pack.
 - Completed OCR runs persist raw text under `storage/ocr/{pack_id}/{document_id}.txt` and expose that path as `raw_text_ref`.
-- The first text extractor reads `raw_text_ref` during normalization and extracts MVP fields for invoice, packing list, and bill of lading documents.
+- The first text extractor reads `raw_text_ref` during normalization and extracts MVP fields for invoice, packing list, bill of lading, addendum, COA, and payment confirmation documents.
 
 ## Validation
 
+- `POST /api/validation-runs` accepts files, then runs intake, OCR, normalization, rule-engine validation, and returns one workflow response with the report, normalized documents, summary, and grouped results.
+- `GET /api/validation-runs/{pack_id}` returns the latest in-memory validation run response for a document pack.
 - `POST /api/validation/reports/{pack_id}` runs validation rules against a document pack.
 - If the pack has no normalized documents yet, the endpoint runs the current normalization stub first.
 - `POST /api/validation/reports/mock` remains available for response-shape checks.

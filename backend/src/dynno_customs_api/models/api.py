@@ -150,3 +150,27 @@ class ValidationReportResponse(BaseModel):
     generated_at: datetime
     summary: ValidationSummary
     results: list[ValidationResultResponse]
+
+
+class ValidationResultGroups(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    failed: list[ValidationResultResponse] = Field(default_factory=list)
+    needs_review: list[ValidationResultResponse] = Field(default_factory=list)
+    warnings: list[ValidationResultResponse] = Field(default_factory=list)
+    skipped: list[ValidationResultResponse] = Field(default_factory=list)
+    passed: list[ValidationResultResponse] = Field(default_factory=list)
+
+
+class ValidationRunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    pack_id: UUID
+    status: str
+    created_at: datetime
+    updated_at: datetime | None = None
+    summary: ValidationSummary
+    grouped_results: ValidationResultGroups
+    report: ValidationReportResponse
+    documents: list[NormalizedDocumentResponse]

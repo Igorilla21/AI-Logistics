@@ -4,7 +4,6 @@
 
 - Workspace root: `C:\Users\Пользователь\Desktop\dynnoCustoms`.
 - As of 2026-04-25, the workspace was empty before initialization files were added.
-- `git` is not available in PATH in the current shell environment.
 
 ## Product Goal
 
@@ -20,7 +19,7 @@
 - `schemas/common.schema.json`, `schemas/normalized-document.schema.json`, `schemas/document-pack.schema.json`, `schemas/validation-result.schema.json`, and `schemas/validation-report.schema.json` define the first machine-readable JSON contracts for extraction and validation flows.
 - `docs/json-schema-overview.md` summarizes the role of the JSON schemas in the pipeline.
 - `backend` now contains a FastAPI scaffold with health, schema registry, document-pack, mock validation, and rule-engine validation endpoints.
-- `frontend` now contains a manually scaffolded React/Vite client shell for the internal web interface.
+- `frontend` contains a React/Vite client for the internal web interface.
 - `docs/web-application-architecture.md` records the recommended internal web deployment model and security rationale.
 - `.gitignore` and root `README.md` were added for repository hygiene and local setup guidance.
 - `backend` now also includes in-memory `document pack` storage, file persistence into repo-local `uploads/`, and API routes to create, list, and fetch packs.
@@ -34,6 +33,24 @@
 - `POST /api/document-packs/{pack_id}/ocr` runs OCR for a document pack; `GET /api/document-packs/{pack_id}/ocr-results` returns the pack's latest OCR results.
 - Completed OCR runs now persist raw text files under repo-local `storage/ocr/{pack_id}/{document_id}.txt` and expose that path as `raw_text_ref`.
 - `backend/src/dynno_customs_api/services/text_extractor.py` implements the first OCR-text extractor for invoice, packing list, and bill of lading MVP fields.
+- On 2026-05-05, a test document pack was created from `test-docs/invoice.pdf`, `test-docs/packing_list.pdf`, and `test-docs/bl.pdf`; uploaded files were persisted under `uploads/9314bab4-e861-4daa-abc9-84e44a654c58/`.
+- The same test pack completed OCR for all three PDFs, persisted OCR text under `storage/ocr/9314bab4-e861-4daa-abc9-84e44a654c58/`, normalized all three documents with `partial` extraction status, and generated a validation report with summary `27 total`, `16 passed`, `3 failed`, `8 skipped`, `0 warnings`, and `0 needs_review`.
+- On 2026-05-05, a second test document pack was created from `test-docs/invoice.pdf`, `test-docs/packing_list.pdf`, `test-docs/bl.pdf`, `test-docs/addendum.pdf`, `test-docs/coa.pdf`, and `test-docs/payment_confirmation.pdf`; pack id was `015350d1-49a0-4402-92f0-869d3b4743e3`.
+- The six-file test pack completed OCR for all six PDFs and normalized all six documents with `partial` extraction status, but `addendum`, `coa`, and `payment_confirmation` normalized fields were empty because `text_extractor.py` currently implements extraction only for invoice, packing list, and bill of lading document types.
+- `backend/src/dynno_customs_api/services/text_extractor.py` now extracts addendum fields (`addendum_no`, `addendum_date`, `contract_no`, `contract_date`, `seller_name`, `buyer_name`, `incoterms`, `payment_terms`), COA fields (`invoice_no`, `batch_no`, `manufacture_date`, `expiry_date`), and payment-confirmation fields (`document_presence`, party names, contract/addendum references).
+- `backend/tests/test_text_extractor.py` covers extraction for addendum, COA, and payment confirmation OCR text in addition to invoice, packing list, and bill of lading.
+- After expanding `text_extractor.py`, a six-file test pack was created from the same test documents; pack id was `7b15b940-1d0f-452f-850f-c99dc78cd8cc`.
+- The updated six-file test pack completed OCR and normalization, generated a validation report with summary `27 total`, `23 passed`, `0 failed`, `4 skipped`, `0 warnings`, and `0 needs_review`, and pack status became `validated`.
+- `POST /api/validation-runs` now accepts files and orchestrates intake, OCR, normalization, rule-engine validation, latest-report storage, and a workflow response containing `run_id`, `pack_id`, pack `status`, summary, grouped results, full report, and normalized documents.
+- `GET /api/validation-runs/{pack_id}` returns the latest in-memory validation run response for a document pack.
+- `backend/src/dynno_customs_api/api/serializers.py` contains shared response serializers for normalized documents, validation reports, and grouped validation results used by the validation-run workflow.
+- `backend/src/dynno_customs_api/services/validation_report_store.py` stores the latest validation report per pack in memory; `POST /api/validation/reports/{pack_id}` now also saves generated reports there.
+- `backend/tests/test_validation_runs.py` covers the validation-run workflow endpoint and latest-run lookup.
+- `frontend/src/App.tsx` now implements the document validation workspace: file selection, `POST /api/validation-runs` submission, API status links, run summary metrics, grouped validation results, and normalized document table.
+- `frontend/src/lib/api.ts` defines typed API helpers for health, schema index, and validation-run creation.
+- `frontend/src/styles.css` defines the operational validation workspace layout and responsive report UI.
+- `frontend/package-lock.json` was generated after installing frontend dependencies locally.
+- `backend/src/dynno_customs_api/config.py` allows CORS from both `http://localhost:5173` and `http://127.0.0.1:5173` so the Vite dev server can call the API from either local URL.
 
 ## Decisions
 
@@ -68,7 +85,7 @@
 
 - `git` is available (`git version 2.54.0.windows.1`).
 - `py` launcher is available with `Python 3.13.13`.
-- `node` and `npm` were not usable in the current environment during scaffold creation, so the frontend was created manually and not executed.
+- System `node` and `npm` remain unavailable through PATH, but portable Node.js `v22.12.0` was downloaded to repo-local `.cache/node/` and used for frontend installation/build commands with npm cache in `.cache/npm/`.
 - A project-local backend virtual environment was created at `backend/.venv`.
 - `backend\\.venv\\Scripts\\python -m pip install -e backend[dev]` completed successfully.
 - `backend\\.venv\\Scripts\\python -m pytest backend/tests` passed with `2 passed`.
@@ -82,6 +99,16 @@
 - After OCR endpoint changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `17 passed`.
 - After OCR raw-text persistence changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `18 passed`.
 - After extractor v1 changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `22 passed`.
+- On 2026-05-05, the backend was started with `backend\\.venv\\Scripts\\python -m uvicorn dynno_customs_api.main:app --host 127.0.0.1 --port 8000` from `backend`; `GET /api/health` returned `status: ok`.
+- The 2026-05-05 validation report for the three-file test pack set pack status to `failed` because COA rules `R019`, `R020`, and `R021` failed due missing COA batch, manufacture date, and expiry date fields.
+- The 2026-05-05 validation report for the six-file test pack also returned `27 total`, `16 passed`, `3 failed`, `8 skipped`, `0 warnings`, and `0 needs_review`; failures remained `R019`, `R020`, and `R021` because COA fields were not extracted despite OCR text containing `BATCH NO.: 95320172`, `MANUFACTURE DATE: MAR.08,2026`, and `EXPIRY DATE: MAR.07,2028`.
+- After addendum/COA/payment extractor changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `26 passed`.
+- After restarting uvicorn and rerunning the six-file validation pack, COA rules `R019` through `R023` and prepayment rule `R018` passed; remaining skipped rules were `R003`, `R005`, `R015`, and `R016`.
+- After adding validation-run endpoints and shared serializers, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `28 passed`.
+- After restarting uvicorn, `POST /api/validation-runs` on the six-file test set produced run id `9383b505-4499-4ece-b0dc-2e8dead12ea3`, pack id `dd91cc2f-caea-4e2d-900c-13839975593a`, status `validated`, summary `27 total`, `23 passed`, `0 failed`, `4 skipped`, `0 warnings`, and `0 needs_review`; `GET /api/validation-runs/{pack_id}` returned the same run.
+- `frontend` dependencies were installed with portable Node.js `v22.12.0`; `npm run build` completed successfully and produced `frontend/dist/`.
+- After frontend workflow and CORS changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `28 passed`, and `frontend` `npm run build` completed successfully.
+- The Vite dev server was started at `http://127.0.0.1:5173/` and returned HTTP 200; the backend API was restarted at `http://127.0.0.1:8000/health` and returned `status: ok`.
 
 ## Open Inputs Needed From User
 

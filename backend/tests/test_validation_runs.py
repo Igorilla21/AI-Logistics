@@ -1,0 +1,63 @@
+from io import BytesIO
+from uuid import UUID
+
+from fastapi.testclient import TestClient
+from PIL import Image
+
+from dynno_customs_api.main import app
+from dynno_customs_api.services import tesseract_ocr
+from dynno_customs_api.services.document_pack_store import document_pack_store
+
+
+def _png_bytes() -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (120, 60), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _fake_invoice_ocr_data(image, lang, output_type):
+    text = (
+        "QINGDAO RAITTE TECHNOLOGIES CO.,LTD. COMMERCIAL INVOICE "
+        "TO:000 SOYUZOPTHIM LTD DATE: APR.13,2026 INV.NO.: 26RT0004 "
+        "ADD 68 // Contract Ne QRT-SOH dated 01.09.2025 "
+        "POLYACRYLAMIDE StabVisco FNL1 18000.00KG CNY9.1000/MT CNY 163800.00 "
+        "PACKING: IN NET 25KG BAG CNY 163800.00 For"
+    )
+    words = text.split()
+    return {
+        "text": words,
+        "conf": ["95"] * len(words),
+    }
+
+
+def test_validation_run_endpoint_orchestrates_full_pipeline(monkeypatch) -> None:
+    monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", _fake_invoice_ocr_data)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/validation-runs",
+        files=[("files", ("invoice.png", _png_bytes(), "image/png"))],
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["run_id"] == body["report"]["report_id"]
+    assert body["pack_id"] == body["report"]["pack_id"]
+    assert body["summary"]["total_rules"] == 27
+    assert body["documents"][0]["document_type"] == "invoice"
+    assert body["documents"][0]["fields"]["invoice_no"]["value"] == "26RT0004"
+    assert body["grouped_results"]["failed"]
+    assert document_pack_store.get(UUID(body["pack_id"])).status == body["status"]
+
+    latest_response = client.get(f"/api/validation-runs/{body['pack_id']}")
+
+    assert latest_response.status_code == 200
+    assert latest_response.json()["run_id"] == body["run_id"]
+
+
+def test_validation_run_latest_endpoint_returns_404_for_missing_pack() -> None:
+    client = TestClient(app)
+
+    response = client.get("/api/validation-runs/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404

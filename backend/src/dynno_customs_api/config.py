@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "0.1.0"
     api_prefix: str = "/api"
-    allowed_origins: list[str] = ["http://localhost:5173"]
+    allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     schemas_dir: Path = SCHEMAS_DIR
     temp_dir: Path = TEMP_DIR
     uploads_dir: Path = UPLOADS_DIR
