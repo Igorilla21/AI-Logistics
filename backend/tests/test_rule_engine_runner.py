@@ -147,6 +147,37 @@ def test_rule_engine_checks_coa_and_bl_rules() -> None:
     assert _result_by_code(report, "R027").status == "failed"
 
 
+def test_product_matching_excludes_bl_cargo_description() -> None:
+    invoice = _document(
+        "invoice",
+        line_items=[
+            LineItemRecord(
+                line_no=1,
+                product_name_normalized=_string("polyacrylamide stabvisco fnl1"),
+            )
+        ],
+    )
+    packing_list = _document(
+        "packing_list",
+        line_items=[
+            LineItemRecord(
+                line_no=1,
+                product_name_normalized=_string("polyacrylamide stabvisco fnl1"),
+            )
+        ],
+    )
+    mbl = _document(
+        "mbl",
+        NormalizedDocumentFieldsRecord(
+            cargo_description=_string("POLYACRYLAMIDE"),
+        ),
+    )
+
+    report = run_rule_engine(_pack([invoice, packing_list, mbl]))
+
+    assert _result_by_code(report, "R004").status == "passed"
+
+
 def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -> None:
     pack = document_pack_store.save(
         _pack(

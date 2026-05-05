@@ -50,6 +50,7 @@
 - The rule-engine runner treats `hbl` as the preferred bill of lading document when both `hbl` and `mbl` are present; otherwise it uses `mbl`.
 - Rule results use the existing validation statuses: `passed`, `failed`, `skipped`, and `needs_review`; summary `warnings` counts failed warning-severity results.
 - Rule `R015` is intentionally skipped until `has_pallets` or an equivalent pallet applicability signal is added to the normalized schema.
+- Rule `R004` product-name matching compares invoice, packing list, addendum, and COA product line items when available; BL `cargo_description` is excluded because BL descriptions may be shorter or more general.
 - OCR endpoint execution currently runs synchronously and stores OCR result metadata in memory; raw OCR text is persisted to repo-local files.
 - Document pack status now includes `ocr_completed` and `ocr_failed` in the JSON Schema.
 - For the observed sample commercial invoice, `QRT-SOH` is the customs-relevant contract number, `ADD 68` is the addendum number, and `RT260004` is a Sales Contract number that is not needed for customs validation.
@@ -87,4 +88,4 @@
 - Real sample documents or anonymized equivalents.
 - Exact validation rules per document and cross-document comparison rules.
 - Cost-calculation formula, tariff inputs, and route/TN VED-specific exceptions. User plans to provide FOB formula later.
-- Still needs clarification on product-name comparison strictness, numeric tolerances, buyer vs consignee mapping in BL, and container-number applicability.
+- Still needs clarification on product-name comparison strictness across invoice/packing list/addendum, numeric tolerances, buyer vs consignee mapping in BL, and container-number applicability.

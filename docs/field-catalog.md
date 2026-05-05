@@ -162,7 +162,7 @@
 | `gross_weight_kg` | `gross weight`, `gross mass` | decimal | yes | R024 | `21540` | |
 | `packages_quantity` | `no. of packages`, `packages` | integer | yes | R025 | `1000` | |
 | `package_type` | `kind of packages`, `packages` | string | no | future | `bags` | |
-| `cargo_description` | `description of goods`, `cargo description` | string | yes | R027 | `PVC RESIN SG-5` | Проверять отсутствие `HS code` |
+| `cargo_description` | `description of goods`, `cargo description` | string | yes | R027 | `PVC RESIN SG-5` | Проверять отсутствие `HS code`; не использовать для R004 product-name matching |
 
 ## 5.7 House Bill of Lading (HBL)
 
@@ -176,7 +176,7 @@
 | `container_no` | `container no`, `container number` | string | yes | R026 | `MSCU1234567` | |
 | `gross_weight_kg` | `gross weight`, `gross mass` | decimal | yes | R024 | `21540` | |
 | `packages_quantity` | `no. of packages`, `packages` | integer | yes | R025 | `1000` | |
-| `cargo_description` | `description of goods`, `cargo description` | string | yes | R027 | `PVC RESIN SG-5` | |
+| `cargo_description` | `description of goods`, `cargo description` | string | yes | R027 | `PVC RESIN SG-5` | Не использовать для R004 product-name matching |
 
 ## 5.8 Transport Invoice
 

@@ -632,6 +632,7 @@ def _product_names(document: NormalizedDocumentRecord) -> list[FieldValue]:
 
 
 def _rule_r004(context: RuleContext) -> ValidationResultRecord:
+    # BL cargo_description is deliberately excluded: BL may contain a shorter cargo family description.
     source_types = ("addendum", "invoice", "packing_list", "coa")
     values_by_doc: dict[str, list[FieldValue]] = {}
     for document_type in source_types:
