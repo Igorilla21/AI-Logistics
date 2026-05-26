@@ -143,6 +143,7 @@ class NormalizedDocumentFieldsRecord(BaseModel):
     net_weight_kg: DecimalFieldRecord | None = None
     package_weight_kg: DecimalFieldRecord | None = None
     empty_package_weight_kg: DecimalFieldRecord | None = None
+    has_pallets: BooleanFieldRecord | None = None
     pallet_weight_kg: DecimalFieldRecord | None = None
     pallet_quantity: IntegerFieldRecord | None = None
     items_quantity: IntegerFieldRecord | None = None

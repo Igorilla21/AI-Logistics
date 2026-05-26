@@ -101,6 +101,7 @@ h2 {
 
 .upload-panel,
 .system-panel,
+.history-panel,
 .summary-band,
 .metric,
 .report-panel,
@@ -114,6 +115,7 @@ h2 {
 
 .upload-panel,
 .system-panel,
+.history-panel,
 .report-panel,
 .documents-panel,
 .empty-workspace {
@@ -221,6 +223,50 @@ h2 {
 .kv dd {
   margin: 0;
   font-weight: 700;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-item {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d8e1e8;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #263746;
+  cursor: pointer;
+  text-align: left;
+}
+
+.history-item--active {
+  border-color: #1d5f86;
+  background: #e6f1f6;
+}
+
+.history-item__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-item__head strong {
+  text-transform: capitalize;
+}
+
+.history-item__head small,
+.history-item__summary,
+.history-item__files {
+  color: #657386;
+  font-size: 0.82rem;
+}
+
+.history-item__files {
+  overflow-wrap: anywhere;
 }
 
 .error-banner {
@@ -345,11 +391,28 @@ h2 {
   background: #fbfcfd;
 }
 
+.result-row--needs_review {
+  border-color: #ead7a0;
+  background: #fffaf0;
+}
+
+.result-row--skipped {
+  border-color: #d9e1e8;
+  background: #f6f8fb;
+}
+
 .result-row__head,
 .result-row__meta {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+}
+
+.result-row__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .result-row__head span,
@@ -361,6 +424,62 @@ h2 {
 .result-row p {
   margin: 8px 0;
   line-height: 1.45;
+}
+
+.result-row__note {
+  margin: 0 0 10px;
+  color: #56677a;
+  font-size: 0.92rem;
+}
+
+.result-row__details {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.result-values {
+  padding: 12px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e3e9ee;
+}
+
+.result-values strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #617183;
+}
+
+.result-values__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.result-values__list div {
+  display: grid;
+  gap: 4px;
+}
+
+.result-values__list dt {
+  color: #304152;
+  font-weight: 700;
+}
+
+.result-values__list dd {
+  margin: 0;
+  color: #4a5a6b;
+}
+
+.result-values__list pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
 }
 
 .result-row__meta {

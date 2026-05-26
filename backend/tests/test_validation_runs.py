@@ -7,6 +7,7 @@ from PIL import Image
 from dynno_customs_api.main import app
 from dynno_customs_api.services import tesseract_ocr
 from dynno_customs_api.services.document_pack_store import document_pack_store
+from dynno_customs_api.services.validation_report_store import validation_report_store
 
 
 def _png_bytes() -> bytes:
@@ -54,6 +55,14 @@ def test_validation_run_endpoint_orchestrates_full_pipeline(monkeypatch) -> None
     assert latest_response.status_code == 200
     assert latest_response.json()["run_id"] == body["run_id"]
 
+    history_response = client.get("/api/validation-runs")
+
+    assert history_response.status_code == 200
+    history_body = history_response.json()
+    assert history_body["items"][0]["run_id"] == body["run_id"]
+    assert history_body["items"][0]["pack_id"] == body["pack_id"]
+    assert history_body["items"][0]["file_names"] == ["invoice.png"]
+
 
 def test_validation_run_latest_endpoint_returns_404_for_missing_pack() -> None:
     client = TestClient(app)
@@ -61,3 +70,25 @@ def test_validation_run_latest_endpoint_returns_404_for_missing_pack() -> None:
     response = client.get("/api/validation-runs/00000000-0000-0000-0000-000000000000")
 
     assert response.status_code == 404
+
+
+def test_validation_report_endpoint_uses_shared_workflow(monkeypatch) -> None:
+    monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", _fake_invoice_ocr_data)
+    client = TestClient(app)
+
+    pack_response = client.post(
+        "/api/document-packs",
+        files=[("files", ("invoice.png", _png_bytes(), "image/png"))],
+    )
+
+    assert pack_response.status_code == 200
+    pack_id = pack_response.json()["pack_id"]
+
+    response = client.post(f"/api/validation/reports/{pack_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pack_id"] == pack_id
+    assert body["summary"]["total_rules"] == 27
+    assert validation_report_store.get_latest(UUID(pack_id)) is not None
+    assert document_pack_store.get(UUID(pack_id)).status in {"failed", "validated", "needs_review"}

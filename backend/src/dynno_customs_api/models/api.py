@@ -174,3 +174,23 @@ class ValidationRunResponse(BaseModel):
     grouped_results: ValidationResultGroups
     report: ValidationReportResponse
     documents: list[NormalizedDocumentResponse]
+
+
+class ValidationRunSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    pack_id: UUID
+    status: str
+    created_at: datetime
+    updated_at: datetime | None = None
+    generated_at: datetime
+    summary: ValidationSummary
+    document_count: int
+    file_names: list[str]
+
+
+class ValidationRunListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ValidationRunSummaryResponse]

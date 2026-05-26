@@ -42,21 +42,38 @@
 - After expanding `text_extractor.py`, a six-file test pack was created from the same test documents; pack id was `7b15b940-1d0f-452f-850f-c99dc78cd8cc`.
 - The updated six-file test pack completed OCR and normalization, generated a validation report with summary `27 total`, `23 passed`, `0 failed`, `4 skipped`, `0 warnings`, and `0 needs_review`, and pack status became `validated`.
 - `POST /api/validation-runs` now accepts files and orchestrates intake, OCR, normalization, rule-engine validation, latest-report storage, and a workflow response containing `run_id`, `pack_id`, pack `status`, summary, grouped results, full report, and normalized documents.
-- `GET /api/validation-runs/{pack_id}` returns the latest in-memory validation run response for a document pack.
+- `GET /api/validation-runs/{pack_id}` returns the latest persisted validation run response for a document pack.
 - `backend/src/dynno_customs_api/api/serializers.py` contains shared response serializers for normalized documents, validation reports, and grouped validation results used by the validation-run workflow.
-- `backend/src/dynno_customs_api/services/validation_report_store.py` stores the latest validation report per pack in memory; `POST /api/validation/reports/{pack_id}` now also saves generated reports there.
+- `backend/src/dynno_customs_api/services/validation_workflow.py` now contains the shared application workflow for intake-to-report orchestration and latest/history retrieval, so both web API routes and a future desktop shell can invoke the same backend core without duplicating HTTP-layer logic.
+- `backend/src/dynno_customs_api/services/database.py` now initializes SQL-backed persistence tables for document packs, document files, OCR document results, normalized documents, validation reports, and validation results.
+- `backend/src/dynno_customs_api/services/document_pack_store.py` now uses a SQL-backed store for persisted document packs, document files, OCR results, and normalized documents while retaining the in-memory store class for isolated unit tests.
+- `backend/src/dynno_customs_api/services/validation_report_store.py` now uses a SQL-backed store for persisted validation reports and validation results while retaining the in-memory store class for isolated unit tests.
+- `backend/alembic.ini`, `backend/alembic/env.py`, and `backend/alembic/versions/20260521_0001_baseline_schema.py` now define Alembic migration support and a baseline schema revision for the current SQL persistence model.
+- `backend/src/dynno_customs_api/services/migrations.py` runs Alembic migrations from application startup, replacing startup-time table creation through SQLAlchemy `create_all`.
 - `backend/tests/test_validation_runs.py` covers the validation-run workflow endpoint and latest-run lookup.
+- `GET /api/validation-runs` now returns persisted validation-run history summaries built from saved document packs and latest validation reports.
+- `backend/tests/conftest.py` now forces a repo-local SQLite test database under `.tmp/pytest/backend-tests.db` and clears persisted tables between tests.
+- `backend/tests/test_validation_report_store.py` covers latest-report persistence and retrieval from the SQL-backed validation report store.
+- `backend/tests/test_validation_report_store.py` now also covers roundtrip persistence of separate `validation_results` rows attached to the latest report.
+- `backend/tests/test_document_pack_store.py` now covers SQL roundtrip persistence for nested pack data including files, OCR results, and normalized documents.
 - `frontend/src/App.tsx` now implements the document validation workspace: file selection, `POST /api/validation-runs` submission, API status links, run summary metrics, grouped validation results, and normalized document table.
+- `frontend/src/App.tsx` now also loads validation-run history, shows saved runs in the side panel, and can reopen a previous run without rerunning OCR or validation.
+- `frontend/src/App.tsx` now also renders validation result details from `observed_values` and `expected_values`, highlights `needs_review` and `skipped` states separately, and selects the initial result tab by group priority instead of a simple failed-or-skipped fallback.
 - `frontend/src/lib/api.ts` defines typed API helpers for health, schema index, and validation-run creation.
-- `frontend/src/styles.css` defines the operational validation workspace layout and responsive report UI.
+- `frontend/src/styles.css` defines the operational validation workspace layout, responsive report UI, and dedicated detail-card styling for `needs_review`, `skipped`, and observed/expected rule values.
 - `frontend/package-lock.json` was generated after installing frontend dependencies locally.
 - `backend/src/dynno_customs_api/config.py` allows CORS from both `http://localhost:5173` and `http://127.0.0.1:5173` so the Vite dev server can call the API from either local URL.
+- Root `.gitignore` now excludes repo-local `.env` files, including `backend/.env`, so local database credentials stay untracked.
 
 ## Decisions
 
 - Start with a narrow MVP focused on one shipment per case and three core document types: invoice, packing list, and bill of lading.
 - Plan the system as two modules: document validation and landed-cost calculation.
+- The current product implementation is deterministic application software, not an LLM-based agent runtime; OCR, extraction, validation, and reporting currently run without any language model dependency.
 - Prefer Python/FastAPI backend, React frontend, PostgreSQL, and an external OCR/document AI provider for the first working version.
+- For the first persistence step, keep report structures serialized as JSON payloads in SQL tables.
+- For the second persistence step, store `document files`, `OCR results`, and `normalized documents` in separate SQL tables while still keeping per-row JSON payloads to avoid premature ORM decomposition of every nested field.
+- After extending the second persistence step, store `validation results` in a separate SQL table keyed by `(report_id, rule_code)` while keeping the report header and summary payload in `validation_reports`.
 - Default extraction should read the full document first; explicit page regions should be added only for fields that prove ambiguous or unstable across templates.
 - The first validation specification separates `MVP Core` rules from `Phase 2` rules to reduce extraction complexity in the initial implementation.
 - The extraction layer now has a document-by-document field catalog with explicit MVP Core priorities.
@@ -66,7 +83,7 @@
 - After intake, the next implemented layer is a schema-aligned normalization stub that classifies documents by filename and emits `partial` normalized documents for downstream validation flow.
 - The rule-engine runner treats `hbl` as the preferred bill of lading document when both `hbl` and `mbl` are present; otherwise it uses `mbl`.
 - Rule results use the existing validation statuses: `passed`, `failed`, `skipped`, and `needs_review`; summary `warnings` counts failed warning-severity results.
-- Rule `R015` is intentionally skipped until `has_pallets` or an equivalent pallet applicability signal is added to the normalized schema.
+- Rule `R015` now uses the normalized `has_pallets` applicability signal: it passes when pallets are not applicable, warns when pallets are present but pallet weight or quantity is missing, and passes when pallet details are present.
 - Rule `R004` product-name matching compares invoice, packing list, addendum, and COA product line items when available; BL `cargo_description` is excluded because BL descriptions may be shorter or more general.
 - OCR endpoint execution currently runs synchronously and stores OCR result metadata in memory; raw OCR text is persisted to repo-local files.
 - Document pack status now includes `ocr_completed` and `ocr_failed` in the JSON Schema.
@@ -106,8 +123,25 @@
 - After restarting uvicorn and rerunning the six-file validation pack, COA rules `R019` through `R023` and prepayment rule `R018` passed; remaining skipped rules were `R003`, `R005`, `R015`, and `R016`.
 - After adding validation-run endpoints and shared serializers, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `28 passed`.
 - After restarting uvicorn, `POST /api/validation-runs` on the six-file test set produced run id `9383b505-4499-4ece-b0dc-2e8dead12ea3`, pack id `dd91cc2f-caea-4e2d-900c-13839975593a`, status `validated`, summary `27 total`, `23 passed`, `0 failed`, `4 skipped`, `0 warnings`, and `0 needs_review`; `GET /api/validation-runs/{pack_id}` returned the same run.
+- On 2026-05-14, backend dependencies were updated to include `sqlalchemy` and `psycopg[binary]`; `backend\\.venv\\Scripts\\python -m pytest backend\\tests` then passed with `31 passed`.
+- Backend settings now include `DYNNO_DATABASE_URL`; the default runtime database path is repo-local `storage/dynno_customs.db`, while pytest uses repo-local `.tmp/pytest/backend-tests.db`.
+- On 2026-05-15, PostgreSQL 17 was installed locally on Windows via `winget`; service `postgresql-x64-17` was started, database `dynno_customs` was created, and backend runtime was switched to PostgreSQL through local `backend/.env`.
+- After the PostgreSQL switch on 2026-05-15, `GET /api/health` returned `status: ok`, and the `dynno_customs` database contained SQL-created tables `document_packs` and `validation_reports`.
+- On 2026-05-21, the second persistence step was applied and verified: `dynno_customs` now also contains tables `document_files`, `ocr_document_results`, and `normalized_documents`.
+- After the second persistence step on 2026-05-21, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `31 passed`.
+- On 2026-05-21, persistence was extended further so `dynno_customs` now also contains table `validation_results`; the live PostgreSQL schema now includes `document_packs`, `document_files`, `ocr_document_results`, `normalized_documents`, `validation_reports`, and `validation_results`.
+- On 2026-05-21, Alembic `1.18.4` was installed into `backend/.venv`, a baseline revision `20260521_0001` was added, `alembic upgrade head` successfully created the full schema in a fresh PostgreSQL database `dynno_customs_alembic_test`, and the existing local database `dynno_customs` was aligned to that baseline with `alembic stamp head`.
+- After introducing Alembic on 2026-05-21, `backend\\.venv\\Scripts\\alembic.exe -c alembic.ini current` returned `20260521_0001 (head)` for the local PostgreSQL runtime, and `backend\\.venv\\Scripts\\python -m pytest tests` still passed with `31 passed`.
+- On 2026-05-22, application startup was changed to run Alembic migrations; a FastAPI lifespan check against a repo-local SQLite database returned `200 ok` after applying baseline migration, and the temporary startup-check database was removed.
+- On 2026-05-22, validation-run history was added end-to-end: backend history API, frontend history list, and reopening saved runs by `pack_id`.
+- On 2026-05-22, `has_pallets` was added to normalized fields and schema, packing-list extraction now derives it from pallet terms, and rule `R015` now evaluates instead of always skipping when the applicability signal exists.
+- On 2026-05-26, validation orchestration was refactored out of FastAPI routes into `services/validation_workflow.py`; both `/api/validation-runs` and `/api/validation/reports/{pack_id}` now use the same workflow service and shared run serializers.
+- After the 2026-05-26 validation workflow refactor, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `33 passed`.
+- After the 2026-05-22 history and `R015` changes, `backend\\.venv\\Scripts\\python -m pytest tests` passed with `32 passed`, and the frontend TypeScript/Vite production build completed successfully via repo-local Node.js.
+- On 2026-05-22, local backend and frontend servers were available at `http://127.0.0.1:8000/` and `http://127.0.0.1:5173/`; HTTP checks returned `200` for `/api/health` and the Vite UI root.
 - `frontend` dependencies were installed with portable Node.js `v22.12.0`; `npm run build` completed successfully and produced `frontend/dist/`.
 - After frontend workflow and CORS changes, `backend\\.venv\\Scripts\\python -m pytest backend\\tests` passed with `28 passed`, and `frontend` `npm run build` completed successfully.
+- After the review-flow UI changes on 2026-05-06, `frontend` TypeScript build and Vite production build both succeeded when invoked directly through repo-local `node.exe`; the `npm.cmd run build` wrapper returned `Access is denied` in this shell environment, but direct `node` execution completed successfully.
 - The Vite dev server was started at `http://127.0.0.1:5173/` and returned HTTP 200; the backend API was restarted at `http://127.0.0.1:8000/health` and returned `status: ok`.
 
 ## Open Inputs Needed From User

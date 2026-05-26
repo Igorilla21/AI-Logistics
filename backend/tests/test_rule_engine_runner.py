@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from dynno_customs_api.main import app
 from dynno_customs_api.models.domain import (
+    BooleanFieldRecord,
     DateFieldRecord,
     DecimalFieldRecord,
     DocumentPackRecord,
@@ -34,6 +35,10 @@ def _decimal(value: float, confidence: float = 0.99) -> DecimalFieldRecord:
 
 def _integer(value: int, confidence: float = 0.99) -> IntegerFieldRecord:
     return IntegerFieldRecord(value=value, confidence=confidence, page_no=1, text_snippet=str(value))
+
+
+def _boolean(value: bool, confidence: float = 0.99) -> BooleanFieldRecord:
+    return BooleanFieldRecord(value=value, confidence=confidence, page_no=1, text_snippet=str(value))
 
 
 def _date(value: date, confidence: float = 0.99) -> DateFieldRecord:
@@ -176,6 +181,34 @@ def test_product_matching_excludes_bl_cargo_description() -> None:
     report = run_rule_engine(_pack([invoice, packing_list, mbl]))
 
     assert _result_by_code(report, "R004").status == "passed"
+
+
+def test_rule_r015_uses_pallet_applicability_signal() -> None:
+    no_pallets_pack = _pack(
+        [
+            _document(
+                "packing_list",
+                NormalizedDocumentFieldsRecord(has_pallets=_boolean(False)),
+            )
+        ]
+    )
+
+    no_pallets_report = run_rule_engine(no_pallets_pack)
+
+    assert _result_by_code(no_pallets_report, "R015").status == "passed"
+
+    missing_details_pack = _pack(
+        [
+            _document(
+                "packing_list",
+                NormalizedDocumentFieldsRecord(has_pallets=_boolean(True)),
+            )
+        ]
+    )
+
+    missing_details_report = run_rule_engine(missing_details_pack)
+
+    assert _result_by_code(missing_details_report, "R015").status == "failed"
 
 
 def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -> None:

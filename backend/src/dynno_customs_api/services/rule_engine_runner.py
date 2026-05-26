@@ -974,14 +974,88 @@ def _rule_r014(context: RuleContext) -> ValidationResultRecord:
 
 
 def _rule_r015(context: RuleContext) -> ValidationResultRecord:
+    packing_list = context.doc("packing_list")
+    if packing_list is None:
+        return _result(
+            context,
+            rule_code="R015",
+            severity="warning",
+            status="skipped",
+            message="Packing list is missing, so pallet applicability could not be evaluated.",
+            documents=["packing_list"],
+            fields=["has_pallets", "pallet_weight_kg", "pallet_quantity"],
+        )
+
+    has_pallets_values = _field_values(packing_list, "has_pallets")
+    if not has_pallets_values:
+        return _result(
+            context,
+            rule_code="R015",
+            severity="warning",
+            status="skipped",
+            message="Pallet applicability is missing from the packing list extraction.",
+            documents=["packing_list"],
+            fields=["has_pallets", "pallet_weight_kg", "pallet_quantity"],
+        )
+
+    has_pallets = bool(has_pallets_values[0].value)
+    if not has_pallets:
+        return _result(
+            context,
+            rule_code="R015",
+            severity="warning",
+            status="passed",
+            message="Packing list indicates pallets are not applicable.",
+            documents=["packing_list"],
+            fields=["has_pallets", "pallet_weight_kg", "pallet_quantity"],
+            observed_values={has_pallets_values[0].key: has_pallets},
+            evidence=[has_pallets_values[0].evidence],
+            confidence=has_pallets_values[0].confidence,
+        )
+
+    pallet_weight_values = _field_values(packing_list, "pallet_weight_kg")
+    pallet_quantity_values = _field_values(packing_list, "pallet_quantity")
+    observed_values = {has_pallets_values[0].key: has_pallets}
+    if pallet_weight_values:
+        observed_values[pallet_weight_values[0].key] = pallet_weight_values[0].value
+    if pallet_quantity_values:
+        observed_values[pallet_quantity_values[0].key] = pallet_quantity_values[0].value
+
+    missing_fields = []
+    if not pallet_weight_values:
+        missing_fields.append("pallet_weight_kg")
+    if not pallet_quantity_values:
+        missing_fields.append("pallet_quantity")
+
+    if missing_fields:
+        return _result(
+            context,
+            rule_code="R015",
+            severity="warning",
+            status="failed",
+            message="Packing list indicates pallets are present, but pallet weight or quantity is missing.",
+            documents=["packing_list"],
+            fields=["has_pallets", "pallet_weight_kg", "pallet_quantity"],
+            observed_values=observed_values,
+            expected_values={field_name: "required when has_pallets is true" for field_name in missing_fields},
+            evidence=[has_pallets_values[0].evidence],
+            confidence=has_pallets_values[0].confidence,
+        )
+
     return _result(
         context,
         rule_code="R015",
         severity="warning",
-        status="skipped",
-        message="Pallet condition is not modeled yet because has_pallets is not available in the normalized schema.",
+        status="passed",
+        message="Packing list contains pallet weight and pallet quantity for a palletized shipment.",
         documents=["packing_list"],
-        fields=["pallet_weight_kg", "pallet_quantity", "gross_weight_kg", "net_weight_kg"],
+        fields=["has_pallets", "pallet_weight_kg", "pallet_quantity"],
+        observed_values=observed_values,
+        evidence=[
+            has_pallets_values[0].evidence,
+            pallet_weight_values[0].evidence,
+            pallet_quantity_values[0].evidence,
+        ],
     )
 
 

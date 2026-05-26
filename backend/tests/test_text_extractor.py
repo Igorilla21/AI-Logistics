@@ -79,6 +79,7 @@ def test_extract_packing_list_fields_from_ocr_text() -> None:
     assert fields.net_weight_kg.value == 18000.0
     assert fields.package_weight_kg.value == 144.0
     assert fields.empty_package_weight_kg.value == 0.2
+    assert fields.has_pallets.value is False
     assert len(line_items) == 1
     assert line_items[0].quantity.value == 18000.0
 

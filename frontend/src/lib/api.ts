@@ -68,6 +68,22 @@ export type ValidationRunResponse = {
   documents: NormalizedDocument[];
 };
 
+export type ValidationRunSummary = {
+  run_id: string;
+  pack_id: string;
+  status: string;
+  created_at: string;
+  updated_at?: string | null;
+  generated_at: string;
+  summary: ValidationSummary;
+  document_count: number;
+  file_names: string[];
+};
+
+export type ValidationRunListResponse = {
+  items: ValidationRunSummary[];
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, init);
 
@@ -97,4 +113,12 @@ export function createValidationRun(files: File[]): Promise<ValidationRunRespons
     method: "POST",
     body: formData,
   });
+}
+
+export function fetchValidationRuns(): Promise<ValidationRunListResponse> {
+  return request<ValidationRunListResponse>("/validation-runs");
+}
+
+export function fetchValidationRun(packId: string): Promise<ValidationRunResponse> {
+  return request<ValidationRunResponse>(`/validation-runs/${packId}`);
 }

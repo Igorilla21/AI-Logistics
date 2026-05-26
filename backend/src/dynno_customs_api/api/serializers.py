@@ -2,11 +2,14 @@ from dynno_customs_api.models.api import (
     EvidenceResponse,
     NormalizedDocumentResponse,
     ValidationReportResponse,
+    ValidationRunResponse,
+    ValidationRunSummaryResponse,
     ValidationResultGroups,
     ValidationResultResponse,
     ValidationSummary,
 )
 from dynno_customs_api.models.domain import NormalizedDocumentRecord, ValidationReportRecord
+from dynno_customs_api.services.validation_workflow import ValidationWorkflowResult
 
 
 def to_normalized_document_response(document: NormalizedDocumentRecord) -> NormalizedDocumentResponse:
@@ -86,3 +89,33 @@ def group_validation_results(report: ValidationReportRecord) -> ValidationResult
         elif result.status == "passed":
             groups.passed.append(result)
     return groups
+
+
+def to_validation_run_response(result: ValidationWorkflowResult) -> ValidationRunResponse:
+    report_response = to_validation_report_response(result.report)
+    return ValidationRunResponse(
+        run_id=result.report.report_id,
+        pack_id=result.pack.pack_id,
+        status=result.pack.status,
+        created_at=result.pack.created_at,
+        updated_at=result.pack.updated_at,
+        summary=report_response.summary,
+        grouped_results=group_validation_results(result.report),
+        report=report_response,
+        documents=[to_normalized_document_response(item) for item in result.pack.normalized_documents],
+    )
+
+
+def to_validation_run_summary_response(result: ValidationWorkflowResult) -> ValidationRunSummaryResponse:
+    report_response = to_validation_report_response(result.report)
+    return ValidationRunSummaryResponse(
+        run_id=result.report.report_id,
+        pack_id=result.pack.pack_id,
+        status=result.pack.status,
+        created_at=result.pack.created_at,
+        updated_at=result.pack.updated_at,
+        generated_at=result.report.generated_at,
+        summary=report_response.summary,
+        document_count=len(result.pack.normalized_documents),
+        file_names=[item.file_name for item in result.pack.files],
+    )

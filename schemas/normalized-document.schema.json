@@ -114,6 +114,9 @@
         "empty_package_weight_kg": {
           "$ref": "common.schema.json#/$defs/decimalField"
         },
+        "has_pallets": {
+          "$ref": "common.schema.json#/$defs/booleanField"
+        },
         "pallet_weight_kg": {
           "$ref": "common.schema.json#/$defs/decimalField"
         },

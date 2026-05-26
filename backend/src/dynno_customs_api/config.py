@@ -9,6 +9,7 @@ TEMP_DIR = ROOT_DIR / ".tmp"
 UPLOADS_DIR = ROOT_DIR / "uploads"
 OCR_TEMP_DIR = TEMP_DIR / "ocr"
 OCR_OUTPUT_DIR = ROOT_DIR / "storage" / "ocr"
+DEFAULT_DATABASE_PATH = ROOT_DIR / "storage" / "dynno_customs.db"
 DEFAULT_TESSERACT_CMD = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 if not DEFAULT_TESSERACT_CMD.exists():
     DEFAULT_TESSERACT_CMD = Path("tesseract")
@@ -25,6 +26,8 @@ class Settings(BaseSettings):
     uploads_dir: Path = UPLOADS_DIR
     ocr_temp_dir: Path = OCR_TEMP_DIR
     ocr_output_dir: Path = OCR_OUTPUT_DIR
+    database_url: str = f"sqlite+pysqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
+    database_echo: bool = False
     tesseract_cmd: Path | str = DEFAULT_TESSERACT_CMD
     ocr_langs: str = "eng+rus"
     ocr_pdf_dpi: int = 300

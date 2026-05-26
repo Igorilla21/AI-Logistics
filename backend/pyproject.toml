@@ -9,12 +9,15 @@ description = "Backend API for customs document validation workflows."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+  "alembic>=1.16.0,<2.0.0",
   "fastapi>=0.116.0,<1.0.0",
   "pillow>=11.0.0,<12.0.0",
+  "psycopg[binary]>=3.2.0,<4.0.0",
   "pymupdf>=1.26.0,<2.0.0",
   "pydantic-settings>=2.10.0,<3.0.0",
   "pytesseract>=0.3.13,<1.0.0",
   "python-multipart>=0.0.20,<1.0.0",
+  "sqlalchemy>=2.0.0,<3.0.0",
   "uvicorn[standard]>=0.35.0,<1.0.0"
 ]
 

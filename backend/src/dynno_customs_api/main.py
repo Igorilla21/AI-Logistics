@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from dynno_customs_api.api.router import api_router
 from dynno_customs_api.config import settings
+from dynno_customs_api.services.migrations import run_database_migrations
 
 
 @asynccontextmanager
@@ -13,6 +14,7 @@ async def lifespan(_: FastAPI):
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
     settings.ocr_temp_dir.mkdir(parents=True, exist_ok=True)
     settings.ocr_output_dir.mkdir(parents=True, exist_ok=True)
+    run_database_migrations()
     yield
 
 

@@ -76,6 +76,7 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
         fields.empty_package_weight_kg = _decimal_field(
             text, r"\bEmpty bag net weight:\s*([0-9][0-9\s.,]*)\s*kg/bag", "empty_package_weight_kg"
         )
+        fields.has_pallets = _pallet_presence_field(text)
         fields.packages_quantity = _integer_field(text, r"\b(\d+)\s*BAGS\b", "packages_quantity")
         fields.gross_weight_kg = _decimal_field(text, r"\b(\d[\d\s.,]*)\s*KGS\s+(\d[\d\s.,]*)\s*KGS\b", "gross_weight_kg")
         net_match = re.search(r"\b(\d[\d\s.,]*)\s*KGS\s+(\d[\d\s.,]*)\s*KGS\b", text, re.IGNORECASE)
@@ -276,6 +277,20 @@ def _payment_terms_field(text: str) -> StringFieldRecord | None:
         confidence=0.82,
         page_no=1,
         text_snippet=_snippet(match),
+    )
+
+
+def _pallet_presence_field(text: str) -> BooleanFieldRecord:
+    has_pallets = re.search(r"\bpallets?\b", text, re.IGNORECASE) is not None
+    snippet = "Pallet term found in packing list text." if has_pallets else "No pallet terms found in packing list text."
+    return BooleanFieldRecord(
+        value=has_pallets,
+        raw_value=snippet,
+        normalized_value=has_pallets,
+        confidence=0.72 if has_pallets else 0.68,
+        page_no=1,
+        text_snippet=snippet,
+        derived=True,
     )
 
 
