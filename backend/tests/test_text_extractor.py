@@ -50,6 +50,41 @@ PAYMENT_CONFIRMATION_TEXT = (
     "CNY 188400,00"
 )
 
+ADDENDUM_TEXT_REAL = (
+    "Additional agreement №3 to the Contract № DNKM-SOH 2018 dated 01.10.2018 "
+    "Saint Petersburg 24.12.2018 "
+    "Form of payment 100% payment within 90 days after the B/L has been issued"
+)
+
+COA_TEXT_REAL = (
+    "CERTIFICATE OF ANALYSIS INDUSTRY GRADE "
+    "Lot-No.: 20250528 Manufacturing Date: MAY. 28, 2025 "
+    "Date of Issue: MAY. 28, 2025"
+)
+
+PAYMENT_CONFIRMATION_TEXT_REAL = (
+    "Payment order Ordering customer Soyuzopthim, Ltd "
+    "Beneficiary Denkim Denizli Kimya San. ve Tic. A.S. "
+    "Payment to the CONTRACT for PAC-LV. Contr DNKM-SOH 2018 dd 01.10.2018"
+)
+
+CO_TEXT_REAL = (
+    "1. Exporter SHANDONG PAINI NEW MATERIAL CO., LTD "
+    "2. Consignee SOYUZOPTHIM LTD. "
+    "10. Number and date of invoices PN2025051504 MAY 15, 2025 "
+    "25126KGS G.W. produced in China"
+)
+
+BL_TEXT_REAL = (
+    "THROUGH TRANSPORT BILL OF LADING "
+    "Shipper HENAN AIERFUKE CHEMICALS CO.,LTD. "
+    "BILL OF LADING NUMBER LED417527A "
+    "Consignee SOYUZOPTHIM LTD. "
+    "CONTAINER NUMBER CLHU3822754 20GP COC STF805711 "
+    "POLY ALUMINIUM CHLORIDE 880 BAGS "
+    "SHIPPED ON BOARD 10.06.2025"
+)
+
 
 def test_extract_invoice_fields_from_ocr_text() -> None:
     fields, line_items = extract_fields("invoice", INVOICE_TEXT)
@@ -124,3 +159,49 @@ def test_extract_payment_confirmation_fields_from_ocr_text() -> None:
     assert fields.seller_name.value == "QINGDAO RAITTE TECHNOLOGIES CO., LTD"
     assert fields.contract_no.value == "QRT-SOH"
     assert fields.addendum_no.value == "ADD 68"
+
+
+def test_extract_addendum_fields_from_realistic_text_variants() -> None:
+    fields, _ = extract_fields("addendum", ADDENDUM_TEXT_REAL)
+
+    assert fields.addendum_no.value == "ADD 3"
+    assert fields.contract_no.value == "DNKM-SOH 2018"
+    assert fields.contract_date.value.isoformat() == "2018-10-01"
+    assert fields.payment_terms.value == "100% payment within 90 days after the B/L has been issued"
+
+
+def test_extract_coa_fields_from_realistic_text_variants() -> None:
+    fields, _ = extract_fields("coa", COA_TEXT_REAL)
+
+    assert fields.batch_no.value == "20250528"
+    assert fields.manufacture_date.value.isoformat() == "2025-05-28"
+
+
+def test_extract_payment_confirmation_fields_from_realistic_text_variants() -> None:
+    fields, _ = extract_fields("payment_confirmation", PAYMENT_CONFIRMATION_TEXT_REAL)
+
+    assert fields.buyer_name.value == "Soyuzopthim, Ltd"
+    assert fields.seller_name.value == "Denkim Denizli Kimya San. ve Tic. A.S"
+    assert fields.contract_no.value == "DNKM-SOH 2018"
+
+
+def test_extract_certificate_of_origin_fields_from_realistic_text_variants() -> None:
+    fields, _ = extract_fields("certificate_of_origin", CO_TEXT_REAL)
+
+    assert fields.shipper_name.value == "SHANDONG PAINI NEW MATERIAL CO., LTD"
+    assert fields.buyer_name.value == "SOYUZOPTHIM LTD"
+    assert fields.invoice_no.value == "PN2025051504"
+    assert fields.invoice_date.value.isoformat() == "2025-05-15"
+    assert fields.gross_weight_kg.value == 25126.0
+    assert fields.origin_country.value == "China"
+
+
+def test_extract_bill_of_lading_fields_from_realistic_text_variants() -> None:
+    fields, _ = extract_fields("mbl", BL_TEXT_REAL)
+
+    assert fields.shipper_name.value == "HENAN AIERFUKE CHEMICALS CO.,LTD"
+    assert fields.buyer_name.value == "SOYUZOPTHIM LTD"
+    assert fields.bl_no.value == "LED417527A"
+    assert fields.container_no.value == "CLHU3822754"
+    assert fields.packages_quantity.value == 880
+    assert fields.bl_date.value.isoformat() == "2025-06-10"

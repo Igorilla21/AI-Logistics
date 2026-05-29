@@ -22,9 +22,8 @@ def build_normalized_document_stub(
     pages: int = 1,
     ocr_provider: str = "stub",
 ) -> NormalizedDocumentRecord:
-    classified = classify_document(file_name, content_type)
-
     raw_text = read_raw_text(raw_text_ref)
+    classified = classify_document(file_name, content_type, raw_text)
     fields, line_items = extract_fields(classified.document_type, raw_text)
     evidence = [
         EvidenceRecord(

@@ -42,8 +42,8 @@ def test_run_ocr_for_document_pack_updates_pack_with_results(monkeypatch) -> Non
             provider="tesseract",
             languages="eng+rus",
             status="completed",
-            pages=[OcrPageResultRecord(page_no=1, text="Invoice INV-001", confidence=0.91)],
-            raw_text="Invoice INV-001",
+            pages=[OcrPageResultRecord(page_no=1, text="Invoice\nINV-001", confidence=0.91)],
+            raw_text="Invoice\nINV-001",
             created_at=datetime.now(UTC),
         )
 
@@ -53,9 +53,9 @@ def test_run_ocr_for_document_pack_updates_pack_with_results(monkeypatch) -> Non
     updated_pack = ocr_service.run_ocr_for_document_pack(pack.pack_id)
 
     assert updated_pack.status == "ocr_completed"
-    assert updated_pack.ocr_results[0].raw_text == "Invoice INV-001"
+    assert updated_pack.ocr_results[0].raw_text == "Invoice\nINV-001"
     assert updated_pack.ocr_results[0].raw_text_ref == f"storage\\ocr\\{pack.pack_id}\\{document.document_id}.txt"
-    assert (ROOT_DIR / updated_pack.ocr_results[0].raw_text_ref).read_text(encoding="utf-8") == "Invoice INV-001"
+    assert (ROOT_DIR / updated_pack.ocr_results[0].raw_text_ref).read_text(encoding="utf-8") == "Invoice\nINV-001"
     assert store.get(pack.pack_id).ocr_results == updated_pack.ocr_results
 
 

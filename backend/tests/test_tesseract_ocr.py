@@ -33,6 +33,9 @@ def fake_image_to_data(image, lang, output_type):
     return {
         "text": ["", "Invoice", "INV-001"],
         "conf": ["-1", "95", "85"],
+        "block_num": [0, 1, 1],
+        "par_num": [0, 1, 1],
+        "line_num": [0, 1, 2],
     }
 
 
@@ -46,11 +49,25 @@ def test_run_tesseract_ocr_for_image(monkeypatch) -> None:
 
     assert result.status == "completed"
     assert result.provider == "tesseract"
-    assert result.raw_text == "Invoice INV-001"
+    assert result.raw_text == "Invoice\nINV-001"
     assert len(result.pages) == 1
     assert result.pages[0].confidence == 0.9
+    assert result.pages[0].text == "Invoice\nINV-001"
     assert result.pages[0].image_width == 120
     assert result.pages[0].image_height == 60
+
+
+def test_assemble_structured_text_keeps_line_breaks() -> None:
+    text = tesseract_ocr._assemble_structured_text(
+        {
+            "text": ["COMMERCIAL", "INVOICE", "INV-001", "DATE", "APR.13,2026"],
+            "block_num": [1, 1, 1, 1, 1],
+            "par_num": [1, 1, 1, 1, 1],
+            "line_num": [1, 1, 2, 3, 3],
+        }
+    )
+
+    assert text == "COMMERCIAL INVOICE\nINV-001\nDATE APR.13,2026"
 
 
 def test_run_tesseract_ocr_fails_for_unsupported_file() -> None:

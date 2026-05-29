@@ -48,7 +48,8 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
     if not raw_text:
         return fields, []
 
-    text = _collapse_spaces(raw_text)
+    multiline_text = _normalize_multiline_text(raw_text)
+    text = _collapse_spaces(multiline_text)
     line_items: list[LineItemRecord] = []
 
     if document_type == "invoice":
@@ -99,47 +100,189 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
             line_items.append(line_item)
 
     elif document_type in {"mbl", "hbl"}:
-        fields.shipper_name = _company_field(
-            text, r"\bSHIPPER\s+BILL OF LADING\s+(.+?CO\.?\s*,?\s*LTD\.?)\s+", "shipper_name"
+        fields.shipper_name = _first_company_field(
+            multiline_text,
+            "shipper_name",
+            [
+                r"(?im)^\s*SHIPPER\s+(.+?)(?=\s+(?:BILL OF LADING NUMBER|CONSIGNEE|Notify|$))",
+                r"(?im)^\s*Shipper\s+(.+?)(?=\s+(?:BILL OF LADING NUMBER|Consignee|Notify|$))",
+            ],
         )
-        fields.buyer_name = _company_field(text, r"\bCONSIGNEE\s+Bill of Lading No\..+?\s+(SOYUZOPTHIM LTD\.)", "buyer_name")
+        if fields.shipper_name is None:
+            fields.shipper_name = _first_company_field(
+                text,
+                "shipper_name",
+                [
+                    r"\bSHIPPER\s+(.+?)(?=\s+(?:BILL OF LADING NUMBER|CONSIGNEE|Notify|$))",
+                    r"\bShipper\s+(.+?)(?=\s+(?:BILL OF LADING NUMBER|Consignee|Notify|$))",
+                ],
+            )
+        fields.buyer_name = _first_company_field(
+            multiline_text,
+            "buyer_name",
+            [
+                r"(?im)^\s*CONSIGNEE\s+(SOYUZOPTHIM\s+LTD\.?)(?=\s+(?:INN|CONTAINER|BILL OF LADING NUMBER|$))",
+                r"(?im)^\s*Consignee\s+(SOYUZOPTHIM\s+LTD\.?)(?=\s+(?:INN|CONTAINER|BILL OF LADING NUMBER|$))",
+            ],
+        )
+        if fields.buyer_name is None:
+            fields.buyer_name = _first_company_field(
+                text,
+                "buyer_name",
+                [
+                    r"\bCONSIGNEE\s+(SOYUZOPTHIM\s+LTD\.?)(?=\s+(?:INN|CONTAINER|BILL OF LADING NUMBER|$))",
+                    r"\bCONSIGNEE\b.*?(SOYUZOPTHIM\s+LTD\.?)(?=\s+(?:INN|CONTAINER|$))",
+                    r"\bConsignee\s+(SOYUZOPTHIM\s+LTD\.?)(?=\s+(?:INN|CONTAINER|BILL OF LADING NUMBER|$))",
+                    r"\bConsignee\b.*?(SOYUZOPTHIM\s+LTD\.?)(?=\s+(?:INN|CONTAINER|$))",
+                ],
+            )
         fields.consignee_name = fields.buyer_name
-        fields.bl_no = _string_field(text, r"\bBill of Lading No\.\s+Booking number\s+([A-Z0-9-]+)", "bl_no")
-        fields.container_no = _string_field(text, r"\b([A-Z]{4}\d{7})\s+COC\b", "container_no")
-        fields.cargo_description = _string_field(text, r"\bCOC\s+\d+\s+(.+?)\s+Bag\s+\d+\s+", "cargo_description")
-        fields.packages_quantity = _integer_field(text, r"\bBag\s+(\d+)\s+\d", "packages_quantity")
-        fields.gross_weight_kg = _decimal_field(text, r"\bBag\s+\d+\s+(\d[\d\s.,]*)\s+\d+\s+Container", "gross_weight_kg")
-        fields.bl_date = _date_field(text, r"\bSHIPPED ON BOARD\s+(\d{1,2}\.\d{1,2}\.\d{2,4})", "bl_date")
+        fields.bl_no = _first_string_field(
+            text,
+            "bl_no",
+            [
+                r"\bBILL OF LADING NUMBER\s+([A-Z0-9-]+)",
+                r"\bB/L\s+No:?\s*([A-Z0-9-]+)",
+                r"\bBill of Lading No\.?\s*(?:Booking number\s+)?([A-Z0-9-]+)",
+                r"\bSEJJ\s+вл\.\s*№\s*([A-Z0-9-]+)",
+            ],
+        )
+        fields.container_no = _string_field(text, r"\b([A-Z]{4}\d{7})\b", "container_no")
+        fields.cargo_description = _first_string_field(
+            text,
+            "cargo_description",
+            [
+                r"\b(POLYACRYLAMIDE)\b",
+                r"\b(POLY ALUMINIUM CHLORIDE)\b",
+                r"\b(TALLOW AMINE DISTILLED PNA-TAD)\b",
+                r"\b(POLYANIONIC CELLULOSE LV)\b",
+                r"\bSaid to contain\.?\s+(?:\d+\s+(?:BAGS|PALLETS|DRUMS)\s+)?(.+?)\s+(?:Contract No|Additional agreement|QUANTITY|TOTAL|HS CODE)\b",
+                r"\bCargo Description.*?(POLY [A-Z ]+|TALLOW AMINE DISTILLED PNA-TAD|POLYANIONIC CELLULOSE LV)\b",
+                r"\bDescription of goods.*?(POLY [A-Z ]+|TALLOW AMINE DISTILLED PNA-TAD|POLYANIONIC CELLULOSE LV)\b",
+            ],
+            confidence=0.76,
+        )
+        fields.packages_quantity = _first_integer_field(
+            text,
+            "packages_quantity",
+            [
+                r"\b(\d+)\s*BAGS\b",
+                r"\bBag\s+(\d+)\b",
+                r"\b(\d+)\s*PALLETS\b",
+                r"\b(\d+)\s*DRUMS\b",
+            ],
+            confidence=0.8,
+        )
+        fields.gross_weight_kg = _first_decimal_field(
+            text,
+            "gross_weight_kg",
+            [
+                r"\bGROSS WEIGHT(?:,\s*KGS| KGS)?\s*(\d[\d\s.,]*)\b",
+                r"\b(\d[\d\s.,]*)\s*KGS\s+(?:TOTAL|HS CODE|FREIGHT|30\.0000 CBM|27 Container)",
+                r"\b(\d[\d\s.,]*)KGS\s*G\.?W\.?",
+                r"\bTOTAL:\s*\d+\s+(\d[\d\s.,]*)\s+SHIPPED ON BOARD\b",
+            ],
+            confidence=0.78,
+        )
+        fields.bl_date = _first_date_field(
+            text,
+            "bl_date",
+            [
+                r"\bSHIPPED ON BOARD\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
+                r"\bShipped on board\b.*?(\d{4}-\d{2}-\d{2})",
+            ],
+        )
 
     elif document_type == "addendum":
         fields.addendum_no = _addendum_no_field(text)
-        fields.addendum_date = _date_field(
+        fields.addendum_date = _first_date_field(
             text,
-            r"\bADDENDUM\s*(?:№|N[eo])\s*\d+\s+dated\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
             "addendum_date",
+            [
+                r"\bADDENDUM\s*(?:№|N[eo])?\s*(?:ADD\s*)?\d+\s+dated\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
+                r"\bAdditional agreement\s*(?:№|No\.?)\s*\d+.*?(\d{1,2}\.\d{1,2}\.\d{2,4})",
+                r"\bПРИЛОЖЕНИЕ\s*№\s*(?:Add\s*)?\d+\s*от\s*(\d{1,2}\.\d{1,2}\.\d{2,4})",
+            ],
         )
-        fields.contract_no = _string_field(
+        fields.contract_no = _first_string_field(
             text,
-            r"\bContract\s+(?:№|N[eo])\s+([A-Z]{2,}-[A-Z0-9]+)\s+dated\b",
             "contract_no",
+            [
+                r"\bContract\s*(?:№|No\.?|N[eo])\s*([A-Z]{2,}(?:\s*-\s*|\-)[A-Z0-9]+(?:\s+\d{4})?)",
+                r"\bКонтракту?\s*№\s*([A-Z]{2,}(?:\s*-\s*|\-)[A-Z0-9]+(?:\s+\d{4})?)",
+            ],
         )
-        fields.contract_date = _date_field(
+        fields.contract_date = _first_date_field(
             text,
-            r"\bContract\s+(?:№|N[eo])\s+[A-Z]{2,}-[A-Z0-9]+\s+dated\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
             "contract_date",
+            [
+                r"\bContract\s*(?:№|No\.?|N[eo]).+?\sdated\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
+                r"\bКонтракту?\s*№.+?\s*от\s*(\d{1,2}\.\d{1,2}\.\d{2,4})",
+            ],
         )
-        fields.seller_name = _company_field(text, r"\b(Qingdao\s+Raitte\s+Technologies\s+Co\.?\s*,?\s*Ltd\.?)", "seller_name")
-        fields.buyer_name = _company_field(text, r"\band\s+(Soyuzopthim\s+Ltd\.?)\s*,", "buyer_name")
-        fields.incoterms = _string_field(text, r"\bon\s+(FOB|FOR|FCA|EXW|DAP|CPT|CIF|CFR|DDP)\s*,?\s*Qingdao", "incoterms")
+        fields.seller_name = _first_company_field(
+            text,
+            "seller_name",
+            [
+                r"\b([A-Z][A-Z0-9&.,'\" ()/-]+(?:CO\.?\s*,?\s*LTD\.?|LTD\.?|A\.S\.|STI\.|LIMITED))\s*,?\s+hereinafter referred to as the SELLER",
+                r"\b([A-Z][A-Z0-9&.,'\" ()/-]+(?:CO\.?\s*,?\s*LTD\.?|LTD\.?|A\.S\.|STI\.|LIMITED))\s*,?\s+именуемый",
+            ],
+            confidence=0.8,
+        )
+        fields.buyer_name = _first_company_field(
+            text,
+            "buyer_name",
+            [
+                r"\band\s+(Soyuzopthim\s+Ltd\.?)\s*,?\s+hereinafter referred to as the BUYER",
+                r"\b(OOO\s+[«\"]?Союзоптхим[»\"]?)\s*,?\s+именуемый",
+            ],
+            confidence=0.8,
+        )
+        fields.incoterms = _first_string_field(
+            text,
+            "incoterms",
+            [
+                r"\bon\s+(FOB|FOR|FCA|EXW|DAP|CPT|CIF|CFR|DDP)\s*,?\s*[A-Z][A-ZA-Z ]+",
+                r"\bусловиях\s+(FOB|FOR|FCA|EXW|DAP|CPT|CIF|CFR|DDP)\b",
+            ],
+        )
         fields.payment_terms = _payment_terms_field(text)
 
     elif document_type == "coa":
-        fields.invoice_no = _string_field(text, r"\bINVOICE\s+NO\.?:\s*([A-Z0-9-]+)", "invoice_no")
-        fields.batch_no = _string_field(text, r"\bBATCH\s+NO\.?:\s*([A-Z0-9-]+)", "batch_no")
-        fields.manufacture_date = _date_field(
-            text, r"\bMANUFACTURE\s+DATE:\s*([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})", "manufacture_date"
+        fields.invoice_no = _first_string_field(
+            text,
+            "invoice_no",
+            [
+                r"\bINVOICE\s+NO\.?:\s*([A-Z0-9-]+)",
+                r"\b10\.\s*Number and date of invoices\s+([A-Z0-9-]+)",
+            ],
         )
-        fields.expiry_date = _date_field(text, r"\bEXPIRY\s+DATE:\s*([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})", "expiry_date")
+        fields.batch_no = _first_string_field(
+            text,
+            "batch_no",
+            [
+                r"\bBATCH\s*(?:NO\.?|No\.?|N0\.?)[:\s]*([A-Z0-9-]+)",
+                r"\bBatchNo[:\s]*([A-Z0-9-]+)",
+                r"\bLot-No\.?:\s*([A-Z0-9-]+)",
+            ],
+        )
+        fields.manufacture_date = _first_date_field(
+            text,
+            "manufacture_date",
+            [
+                r"\bMANUFACTURE\s+DATE:\s*([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})",
+                r"\bManufacturing\s+Date:\s*\|?\s*([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})",
+                r"\bMANUFACTURE\s+DATE:\s*(\d{4}-\d{2}-\d{2})",
+            ],
+        )
+        fields.expiry_date = _first_date_field(
+            text,
+            "expiry_date",
+            [
+                r"\bEXPIRY\s+DATE:\s*([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})",
+                r"\bEXPIRY\s+DATE:\s*(\d{4}-\d{2}-\d{2})",
+            ],
+        )
 
     elif document_type == "payment_confirmation":
         fields.document_presence = BooleanFieldRecord(
@@ -151,17 +294,116 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
             text_snippet="Payment confirmation document was uploaded and OCR completed.",
             derived=True,
         )
-        fields.buyer_name = _company_field(text, r"\bOrdering Customer.+?\s+(SOYUZOPTHIM LTD)\s+", "buyer_name")
-        fields.seller_name = _company_field(text, r"\b(QINGDAO RAITTE TECHNOLOGIES CO\.?\s*,?\s*LTD\.?)\s+", "seller_name")
-        fields.contract_no = _string_field(text, r"\bCONTRACT\s+([A-Z]{2,}-[A-Z0-9]+)\b", "contract_no")
-        fields.addendum_no = _string_field(text, r"\b(ADD\s+68)\b", "addendum_no")
-        fields.currency = _string_field(text, r"\b(CNY)\b", "currency")
+        fields.buyer_name = _first_company_field(
+            text,
+            "buyer_name",
+            [
+                r"\bOrdering customer\b.*?(SOYUZOPTHIM[, ]+LTD\.?)",
+                r"\b1/Soyuzopthim,\s*Ltd\b",
+                r"\b(SOYUZOPTHIM\s+LTD)\b",
+            ],
+            confidence=0.8,
+        )
+        fields.seller_name = _first_company_field(
+            text,
+            "seller_name",
+            [
+                r"\bBeneficiary(?: Customer)?\b.*?([A-Z][A-Z0-9&.,'\" ()/-]+(?:CO\.?\s*,?\s*LTD\.?|LTD\.?|A\.S\.|STI\.|LIMITED))",
+                r"\b(QINGDAO RAITTE TECHNOLOGIES CO\.?\s*,?\s*LTD\.?)\b",
+                r"\b(DENKIM DENIZLI KIMYA SAN\.? VE TIC\.? A\.S\.?)\b",
+            ],
+            confidence=0.8,
+        )
+        fields.contract_no = _first_string_field(
+            text,
+            "contract_no",
+            [
+                r"\bCONTRACT\s+([A-Z]{2,}(?:-[A-Z0-9]+)+(?:\s+\d{4})?)",
+                r"\bContr\s+([A-Z]{2,}(?:-[A-Z0-9]+)+(?:\s+\d{4})?)",
+            ],
+        )
+        fields.addendum_no = _first_string_field(
+            text,
+            "addendum_no",
+            [
+                r"\b(ADD\s+\d+)\b",
+                r"\bAdditional agreement\s+No:?\s*(\d+)",
+            ],
+        )
+        if fields.addendum_no is not None and fields.addendum_no.value.isdigit():
+            value = f"ADD {fields.addendum_no.value}"
+            fields.addendum_no = fields.addendum_no.model_copy(
+                update={
+                    "value": value,
+                    "normalized_value": _normalize_string(value),
+                }
+            )
+        fields.currency = _first_string_field(
+            text,
+            "currency",
+            [
+                r"\b32:\s*(USD|EUR|CNY|RUB)\b",
+                r"\b(CNY|USD|EUR|RUB)\b",
+            ],
+        )
+
+    elif document_type == "certificate_of_origin":
+        fields.shipper_name = _first_company_field(
+            multiline_text,
+            "shipper_name",
+            [r"(?im)^\s*1\.\s*Exporter\s+(.+?)(?=\s+2\.\s*Consignee\b|$)"],
+            confidence=0.8,
+        )
+        fields.buyer_name = _first_company_field(
+            multiline_text,
+            "buyer_name",
+            [r"(?im)^\s*2\.\s*Consignee\s+(SOYUZOPTHIM\s+LTD\.?)(?=\s+10\.\s*Number and date of invoices\b|$)"],
+            confidence=0.8,
+        )
+        if fields.buyer_name is None:
+            fields.buyer_name = _first_company_field(
+                text,
+                "buyer_name",
+                [r"\b2\.\s*Consignee\s+(SOYUZOPTHIM\s+LTD\.?)(?=\s+10\.\s*Number and date of invoices\b|$)"],
+                confidence=0.8,
+            )
+        fields.consignee_name = fields.buyer_name
+        fields.invoice_no = _first_string_field(
+            text,
+            "invoice_no",
+            [r"\b10\.\s*Number and date of invoices\s+([A-Z0-9-]+)"],
+        )
+        fields.invoice_date = _first_date_field(
+            text,
+            "invoice_date",
+            [
+                r"\b10\.\s*Number and date of invoices\s+[A-Z0-9-]+\s+([A-Z]{3}\.?\s*\d{1,2},\s*\d{4})",
+                r"\b10\.\s*Number and date of invoices\s+[A-Z0-9-]+\s+([A-Z]{3}\.\s*\d{1,2},\s*\d{4})",
+            ],
+        )
+        fields.gross_weight_kg = _first_decimal_field(
+            text,
+            "gross_weight_kg",
+            [r"\b(\d{3,}(?:[ .]\d{3})*(?:[.,]\d+)?)\s*KGS\s*G\.?\s*W\.?"],
+            confidence=0.8,
+        )
+        fields.origin_country = _first_string_field(
+            text,
+            "origin_country",
+            [r"\bproduced in\s+(China)\b", r"\bPeople's Republic of\s+(China)\b"],
+            confidence=0.78,
+        )
 
     return fields, line_items
 
 
 def _collapse_spaces(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+
+def _normalize_multiline_text(value: str) -> str:
+    normalized_lines = [_collapse_spaces(line) for line in value.splitlines()]
+    return "\n".join(line for line in normalized_lines if line)
 
 
 def _string_field(text: str, pattern: str, field_name: str, confidence: float = 0.86) -> StringFieldRecord | None:
@@ -179,12 +421,32 @@ def _string_field(text: str, pattern: str, field_name: str, confidence: float = 
     )
 
 
+def _first_string_field(
+    text: str, field_name: str, patterns: list[str], confidence: float = 0.86
+) -> StringFieldRecord | None:
+    for pattern in patterns:
+        field = _string_field(text, pattern, field_name, confidence)
+        if field is not None:
+            return field
+    return None
+
+
 def _company_field(text: str, pattern: str, field_name: str, confidence: float = 0.82) -> StringFieldRecord | None:
     field = _string_field(text, pattern, field_name, confidence)
     if field is None:
         return None
     cleaned = re.sub(r"\s+", " ", field.value.replace("000 ", "")).strip(" .,")
     return field.model_copy(update={"value": cleaned, "raw_value": field.value, "normalized_value": _normalize_string(cleaned)})
+
+
+def _first_company_field(
+    text: str, field_name: str, patterns: list[str], confidence: float = 0.82
+) -> StringFieldRecord | None:
+    for pattern in patterns:
+        field = _company_field(text, pattern, field_name, confidence)
+        if field is not None:
+            return field
+    return None
 
 
 def _date_field(text: str, pattern: str, field_name: str, confidence: float = 0.84) -> DateFieldRecord | None:
@@ -205,11 +467,29 @@ def _date_field(text: str, pattern: str, field_name: str, confidence: float = 0.
     )
 
 
+def _first_date_field(text: str, field_name: str, patterns: list[str], confidence: float = 0.84) -> DateFieldRecord | None:
+    for pattern in patterns:
+        field = _date_field(text, pattern, field_name, confidence)
+        if field is not None:
+            return field
+    return None
+
+
 def _decimal_field(text: str, pattern: str, field_name: str, confidence: float = 0.86) -> DecimalFieldRecord | None:
     match = re.search(pattern, text, re.IGNORECASE)
     if not match:
         return None
     return _decimal_from_match(match, 1, field_name, confidence)
+
+
+def _first_decimal_field(
+    text: str, field_name: str, patterns: list[str], confidence: float = 0.86
+) -> DecimalFieldRecord | None:
+    for pattern in patterns:
+        field = _decimal_field(text, pattern, field_name, confidence)
+        if field is not None:
+            return field
+    return None
 
 
 def _decimal_from_match(match: re.Match[str], group_no: int, field_name: str, confidence: float = 0.86) -> DecimalFieldRecord | None:
@@ -246,8 +526,22 @@ def _integer_field(text: str, pattern: str, field_name: str, confidence: float =
     )
 
 
+def _first_integer_field(
+    text: str, field_name: str, patterns: list[str], confidence: float = 0.86
+) -> IntegerFieldRecord | None:
+    for pattern in patterns:
+        field = _integer_field(text, pattern, field_name, confidence)
+        if field is not None:
+            return field
+    return None
+
+
 def _addendum_no_field(text: str) -> StringFieldRecord | None:
-    match = re.search(r"\bADDENDUM\s*(?:№|N[eo])\s*(\d+)\b", text, re.IGNORECASE)
+    match = re.search(
+        r"\b(?:ADDENDUM|Additional agreement|ПРИЛОЖЕНИЕ)\s*(?:№|N[eo]\.?)?\s*(?:Add\s*)?(\d+)\b",
+        text,
+        re.IGNORECASE,
+    )
     if not match:
         return None
     value = f"ADD {match.group(1)}"
@@ -262,22 +556,12 @@ def _addendum_no_field(text: str) -> StringFieldRecord | None:
 
 
 def _payment_terms_field(text: str) -> StringFieldRecord | None:
-    match = re.search(
+    patterns = [
         r"\bPayment\s+for\s+the\s+Goods\s+should\s+be\s+done.+?:\s*(.+?)\s+The\s+date\s+of\s+shipment\b",
-        text,
-        re.IGNORECASE,
-    )
-    if not match:
-        return None
-    raw_value = _collapse_spaces(match.group(1))
-    return StringFieldRecord(
-        value=raw_value,
-        raw_value=raw_value,
-        normalized_value=_normalize_string(raw_value),
-        confidence=0.82,
-        page_no=1,
-        text_snippet=_snippet(match),
-    )
+        r"\bОплата\s+за\s+товар.+?:\s*(.+?)\s+Под\s+датой\s+отгрузки\b",
+        r"\bForm\s+of\s+payment\s+(.+?)(?:\s+4\s+|\s+Дополнительное\s+соглашение\b|$)",
+    ]
+    return _first_string_field(text, "payment_terms", patterns, confidence=0.82)
 
 
 def _pallet_presence_field(text: str) -> BooleanFieldRecord:
@@ -388,14 +672,27 @@ def _parse_date(raw_value: str) -> date | None:
         month = MONTHS.get(month_match.group(1).lower())
         if month is None:
             return None
-        return date(int(month_match.group(3)), month, int(month_match.group(2)))
+        try:
+            return date(int(month_match.group(3)), month, int(month_match.group(2)))
+        except ValueError:
+            return None
 
     numeric_match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{2,4})", raw_value)
     if numeric_match:
         year = int(numeric_match.group(3))
         if year < 100:
             year += 2000
-        return date(year, int(numeric_match.group(2)), int(numeric_match.group(1)))
+        try:
+            return date(year, int(numeric_match.group(2)), int(numeric_match.group(1)))
+        except ValueError:
+            return None
+
+    iso_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw_value)
+    if iso_match:
+        try:
+            return date(int(iso_match.group(1)), int(iso_match.group(2)), int(iso_match.group(3)))
+        except ValueError:
+            return None
     return None
 
 

@@ -110,7 +110,7 @@ def _ocr_image(*, page_no: int, image: Image.Image) -> OcrPageResultRecord:
         lang=settings.ocr_langs,
         output_type=pytesseract.Output.DICT,
     )
-    text = _join_words(data)
+    text = _assemble_structured_text(data)
     return OcrPageResultRecord(
         page_no=page_no,
         text=text,
@@ -120,9 +120,54 @@ def _ocr_image(*, page_no: int, image: Image.Image) -> OcrPageResultRecord:
     )
 
 
-def _join_words(data: dict[str, list[Any]]) -> str:
-    words = [str(word).strip() for word in data.get("text", []) if str(word).strip()]
-    return " ".join(words)
+def _assemble_structured_text(data: dict[str, list[Any]]) -> str:
+    words = data.get("text", [])
+    if not words:
+        return ""
+
+    block_nums = data.get("block_num", [])
+    par_nums = data.get("par_num", [])
+    line_nums = data.get("line_num", [])
+
+    if not block_nums or not par_nums or not line_nums:
+        return " ".join(str(word).strip() for word in words if str(word).strip())
+
+    lines: list[str] = []
+    current_words: list[str] = []
+    current_key: tuple[int, int, int] | None = None
+
+    for index, raw_word in enumerate(words):
+        word = str(raw_word).strip()
+        if not word:
+            continue
+
+        key = (
+            _safe_ocr_index(block_nums, index),
+            _safe_ocr_index(par_nums, index),
+            _safe_ocr_index(line_nums, index),
+        )
+
+        if current_key is None:
+            current_key = key
+        elif key != current_key:
+            if current_words:
+                lines.append(" ".join(current_words))
+            current_words = []
+            current_key = key
+
+        current_words.append(word)
+
+    if current_words:
+        lines.append(" ".join(current_words))
+
+    return "\n".join(lines)
+
+
+def _safe_ocr_index(values: list[Any], index: int) -> int:
+    try:
+        return int(values[index])
+    except (IndexError, TypeError, ValueError):
+        return 0
 
 
 def _average_confidence(data: dict[str, list[Any]]) -> float | None:

@@ -15,8 +15,31 @@ def test_build_stub_normalized_document() -> None:
 
     assert normalized.document_type == "invoice"
     assert normalized.extraction_status == "partial"
-    assert normalized.metadata.classifier == "filename-keyword-v1"
+    assert normalized.metadata.classifier == "filename-keyword-v2"
     assert normalized.evidence
+
+
+def test_build_stub_uses_ocr_text_for_classification_when_filename_is_generic() -> None:
+    raw_text_dir = settings.temp_dir / "tests" / "normalized-builder"
+    raw_text_dir.mkdir(parents=True, exist_ok=True)
+    raw_text_path = raw_text_dir / "packing-list.txt"
+    raw_text_path.write_text(
+        "PACKING LIST SOYUZOPTHIM LTD INV.NO.: 26RT0004",
+        encoding="utf-8",
+    )
+
+    normalized = build_normalized_document_stub(
+        document_id=uuid4(),
+        file_name="scan_001.pdf",
+        stored_path="uploads/sample/scan_001.pdf",
+        content_type="application/pdf",
+        sha256="b" * 64,
+        raw_text_ref=str(raw_text_path.relative_to(ROOT_DIR)),
+        ocr_provider="tesseract",
+    )
+
+    assert normalized.document_type == "packing_list"
+    assert normalized.metadata.classifier == "ocr-text-keyword-v1"
 
 
 def test_build_normalized_document_extracts_fields_from_raw_text_ref() -> None:
