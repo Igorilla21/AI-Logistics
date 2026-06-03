@@ -85,6 +85,23 @@ BL_TEXT_REAL = (
     "SHIPPED ON BOARD 10.06.2025"
 )
 
+BL_TEXT_TABLE_REAL = (
+    "SHIPPER\n"
+    "BILL OF LADING\n"
+    "QINGDAO RAITTE TECHNOLOGIES CO.,LTD\n"
+    "CONSIGNEE\n"
+    "Bill of Lading No. Booking number\n"
+    "LED432374 LED432374\n"
+    "SOYUZOPTHIM LTD.\n"
+    "Description of packages and goods as stated by shipper. Said to contain.\n"
+    "CONTAINER NUMBER NUMBER CARGO DESCRIPTION PACKAGES KGS VOLUME M3\n"
+    "JZPU2136329 COC 001280 POLYACRYLAMIDE Bag 720 18 144 27\n"
+    "Container(s) 20 DC*1\n"
+    "TOTAL: 720 18 144\n"
+    "ABOVE PARTICULARS DECLARED BY SHIPPER.\n"
+    "SHIPPED ON BOARD 17.04.26\n"
+)
+
 
 def test_extract_invoice_fields_from_ocr_text() -> None:
     fields, line_items = extract_fields("invoice", INVOICE_TEXT)
@@ -115,6 +132,7 @@ def test_extract_packing_list_fields_from_ocr_text() -> None:
     assert fields.package_weight_kg.value == 144.0
     assert fields.empty_package_weight_kg.value == 0.2
     assert fields.has_pallets.value is False
+    assert fields.items_quantity.value == 720
     assert len(line_items) == 1
     assert line_items[0].quantity.value == 18000.0
 
@@ -205,3 +223,9 @@ def test_extract_bill_of_lading_fields_from_realistic_text_variants() -> None:
     assert fields.container_no.value == "CLHU3822754"
     assert fields.packages_quantity.value == 880
     assert fields.bl_date.value.isoformat() == "2025-06-10"
+
+
+def test_extract_bill_of_lading_gross_weight_from_multiline_table_text() -> None:
+    fields, _ = extract_fields("mbl", BL_TEXT_TABLE_REAL)
+
+    assert fields.gross_weight_kg.value == 18144.0

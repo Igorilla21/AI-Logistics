@@ -23,6 +23,18 @@ NUMERIC_TOLERANCE = 0.01
 UNCERTAIN_CONFIDENCE_THRESHOLD = 0.5
 INCOTERMS_ALLOWED = {"FOB", "FOR", "FCA", "EXW", "DAP", "CPT", "CIF", "CFR", "DDP"}
 HS_CODE_PATTERN = re.compile(r"\bh\s*\.?\s*s\s*\.?\s*code\b", re.IGNORECASE)
+NON_PALLET_PACKAGE_TYPES = {
+    "bag",
+    "bags",
+    "box",
+    "boxes",
+    "carton",
+    "cartons",
+    "package",
+    "packages",
+    "pkg",
+}
+NON_PALLET_GROSS_NET_WARNING_THRESHOLD_KG = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1060,26 +1072,168 @@ def _rule_r015(context: RuleContext) -> ValidationResultRecord:
 
 
 def _rule_r016(context: RuleContext) -> ValidationResultRecord:
-    return _numeric_formula_rule(
+    packing_list = context.doc("packing_list")
+    if packing_list is None:
+        return _result(
+            context,
+            rule_code="R016",
+            severity="error",
+            status="skipped",
+            message="Packing list is missing.",
+            documents=["packing_list"],
+            fields=[
+                "gross_weight_kg",
+                "net_weight_kg",
+                "empty_package_weight_kg",
+                "items_quantity",
+                "has_pallets",
+                "pallet_weight_kg",
+                "pallet_quantity",
+            ],
+        )
+
+    has_pallets_value = _numeric_field(packing_list, "has_pallets")
+    package_type_value = _field_values(packing_list, "package_type")
+    base_fields = {
+        "gross_weight_kg": _numeric_field(packing_list, "gross_weight_kg"),
+        "net_weight_kg": _numeric_field(packing_list, "net_weight_kg"),
+        "empty_package_weight_kg": _numeric_field(packing_list, "empty_package_weight_kg"),
+        "items_quantity": _numeric_field(packing_list, "items_quantity"),
+    }
+    optional_pallet_fields = {
+        "pallet_weight_kg": _numeric_field(packing_list, "pallet_weight_kg"),
+        "pallet_quantity": _numeric_field(packing_list, "pallet_quantity"),
+    }
+
+    observed_values = _observed(
+        [
+            value
+            for value in [
+                *base_fields.values(),
+                has_pallets_value,
+                *package_type_value,
+                *optional_pallet_fields.values(),
+            ]
+            if value is not None
+        ]
+    )
+    evidence = _evidence(
+        [
+            value
+            for value in [
+                *base_fields.values(),
+                has_pallets_value,
+                *package_type_value,
+                *optional_pallet_fields.values(),
+            ]
+            if value is not None
+        ]
+    )
+    confidence = _confidence(
+        [
+            value
+            for value in [
+                *base_fields.values(),
+                has_pallets_value,
+                *package_type_value,
+                *optional_pallet_fields.values(),
+            ]
+            if value is not None
+        ]
+    )
+
+    if any(value is None for value in base_fields.values()):
+        return _result(
+            context,
+            rule_code="R016",
+            severity="error",
+            status="skipped",
+            message="One or more base fields for the detailed packing gross weight formula are missing.",
+            documents=["packing_list"],
+            fields=["gross_weight_kg", "net_weight_kg", "empty_package_weight_kg", "items_quantity"],
+            observed_values=observed_values,
+            evidence=evidence,
+            confidence=confidence,
+        )
+
+    numeric_values = {field_name: float(value.value) for field_name, value in base_fields.items() if value is not None}
+    expected = numeric_values["net_weight_kg"] + (
+        numeric_values["empty_package_weight_kg"] * numeric_values["items_quantity"]
+    )
+
+    has_pallets = bool(has_pallets_value.value) if has_pallets_value is not None else None
+    gross_net_delta = numeric_values["gross_weight_kg"] - numeric_values["net_weight_kg"]
+    package_type = package_type_value[0].comparable if package_type_value else None
+
+    if has_pallets:
+        if any(value is None for value in optional_pallet_fields.values()):
+            return _result(
+                context,
+                rule_code="R016",
+                severity="error",
+                status="skipped",
+                message="Pallet details required for the detailed packing gross weight formula are missing.",
+                documents=["packing_list"],
+                fields=["pallet_weight_kg", "pallet_quantity"],
+                observed_values=observed_values,
+                evidence=evidence,
+                confidence=confidence,
+            )
+        expected += float(optional_pallet_fields["pallet_weight_kg"].value) * float(
+            optional_pallet_fields["pallet_quantity"].value
+        )
+    elif package_type in NON_PALLET_PACKAGE_TYPES and gross_net_delta > NON_PALLET_GROSS_NET_WARNING_THRESHOLD_KG:
+        return _result(
+            context,
+            rule_code="R016",
+            severity="warning",
+            status="failed",
+            message="Packing list indicates no pallets, but gross-minus-net weight is unusually high for bag/carton/box/package packaging. Check whether pallets are actually present.",
+            documents=["packing_list"],
+            fields=[
+                "gross_weight_kg",
+                "net_weight_kg",
+                "package_type",
+                "has_pallets",
+                "pallet_weight_kg",
+                "pallet_quantity",
+            ],
+            observed_values={
+                **observed_values,
+                "packing_list.gross_minus_net_weight_kg": round(gross_net_delta, 4),
+            },
+            expected_values={
+                "max_non_pallet_gross_minus_net_weight_kg": NON_PALLET_GROSS_NET_WARNING_THRESHOLD_KG,
+                "package_types_to_check_for_pallets": sorted(NON_PALLET_PACKAGE_TYPES),
+            },
+            evidence=evidence,
+            confidence=confidence,
+        )
+
+    actual = numeric_values["gross_weight_kg"]
+    status: ValidationStatus = "passed" if abs(actual - expected) <= context.tolerance else "failed"
+    return _result(
         context,
         rule_code="R016",
         severity="error",
-        document_type="packing_list",
-        fields=(
+        status=status,
+        message="Packing detailed gross weight formula is valid."
+        if status == "passed"
+        else "Packing detailed gross weight formula is invalid.",
+        documents=["packing_list"],
+        fields=[
             "gross_weight_kg",
             "net_weight_kg",
             "empty_package_weight_kg",
             "items_quantity",
+            "has_pallets",
             "pallet_weight_kg",
             "pallet_quantity",
-        ),
-        compute_expected=lambda values: values["net_weight_kg"]
-        + (values["empty_package_weight_kg"] * values["items_quantity"])
-        + (values["pallet_weight_kg"] * values["pallet_quantity"]),
-        target_field="gross_weight_kg",
-        pass_message="Packing detailed gross weight formula is valid.",
-        fail_message="Packing detailed gross weight formula is invalid.",
-        skip_message="One or more fields for the detailed packing gross weight formula are missing.",
+        ],
+        observed_values=observed_values,
+        expected_values={"packing_list.gross_weight_kg": expected, "tolerance": context.tolerance},
+        evidence=evidence,
+        confidence=confidence,
     )
 
 

@@ -8,6 +8,7 @@ import {
   fetchSchemaIndex,
   HealthResponse,
   NormalizedDocument,
+  ValidationEvidence,
   ValidationResult,
   ValidationRunSummary,
   ValidationRunResponse,
@@ -81,10 +82,51 @@ function formatValue(value: unknown): string {
 
 function formatFieldLabel(value: string): string {
   return value
-    .split("_")
+    .replace(/\[(\d+)\]/g, " $1 ")
+    .split(/[._]/)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatDocumentType(value: string): string {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => (part.length <= 3 ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join(" ");
+}
+
+function getExpectedInputKeys(item: ValidationResult): string[] {
+  if (item.documents.length === 1) {
+    return item.fields.map((field) => `${item.documents[0]}.${field}`);
+  }
+
+  if (item.fields.length === 1) {
+    return item.documents.map((document) => `${document}.${item.fields[0]}`);
+  }
+
+  if (item.documents.length === item.fields.length) {
+    return item.documents.map((document, index) => `${document}.${item.fields[index]}`);
+  }
+
+  return [];
+}
+
+function getMissingInputKeys(item: ValidationResult): string[] {
+  const observedKeys = new Set(Object.keys(item.observed_values ?? {}));
+  return getExpectedInputKeys(item).filter((key) => !observedKeys.has(key));
+}
+
+function getSkippedReason(item: ValidationResult): string {
+  const missingInputs = getMissingInputKeys(item);
+  if (missingInputs.length > 0) {
+    return `Rule was not evaluated because these required inputs are missing: ${missingInputs
+      .map((key) => formatFieldLabel(key))
+      .join(", ")}.`;
+  }
+
+  return "Rule was not evaluated because the required data or applicability signal was missing.";
 }
 
 function getInitialGroup(run: ValidationRunResponse): ResultGroupKey {
@@ -131,6 +173,54 @@ function ResultValues({
   );
 }
 
+function MissingInputs({ item }: { item: ValidationResult }) {
+  const missingInputs = getMissingInputKeys(item);
+
+  const shouldShowMissingInputs =
+    (item.status === "skipped" || item.status === "needs_review") && missingInputs.length > 0;
+
+  if (!shouldShowMissingInputs) {
+    return null;
+  }
+
+  return (
+    <div className="result-values result-values--missing">
+      <strong>Missing required inputs</strong>
+      <ul className="result-listing">
+        {missingInputs.map((key) => (
+          <li key={key}>{formatFieldLabel(key)}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ResultEvidence({ evidence }: { evidence: ValidationEvidence[] }) {
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="result-values">
+      <strong>Source snippets</strong>
+      <ul className="result-evidence">
+        {evidence.map((item, index) => (
+          <li key={`${item.document_type}-${item.page_no}-${item.field_name ?? "field"}-${index}`}>
+            <div className="result-evidence__meta">
+              <span>
+                {formatDocumentType(item.document_type)} · page {item.page_no}
+                {item.field_name ? ` · ${formatFieldLabel(item.field_name)}` : ""}
+              </span>
+              {item.confidence != null ? <span>{Math.round(item.confidence * 100)}%</span> : null}
+            </div>
+            <p>{item.text_snippet}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ResultList({ items, group }: { items: ValidationResult[]; group: ResultGroupKey }) {
   if (items.length === 0) {
     return <p className="empty-state">No rules in this group.</p>;
@@ -154,15 +244,17 @@ function ResultList({ items, group }: { items: ValidationResult[]; group: Result
             </p>
           ) : null}
           {group === "skipped" ? (
-            <p className="result-row__note">Rule was not evaluated because the required data or applicability signal was missing.</p>
+            <p className="result-row__note">{getSkippedReason(item)}</p>
           ) : null}
           <div className="result-row__details">
-            <ResultValues label="Observed" values={item.observed_values} />
+            <ResultValues label="Found" values={item.observed_values} />
+            <MissingInputs item={item} />
             <ResultValues label="Expected" values={item.expected_values} />
+            <ResultEvidence evidence={item.evidence} />
           </div>
           <div className="result-row__meta">
-            <span>{item.documents.join(", ")}</span>
-            <span>{item.fields.join(", ")}</span>
+            <span>{item.documents.map((document) => formatDocumentType(document)).join(", ")}</span>
+            <span>{item.fields.map((field) => formatFieldLabel(field)).join(", ")}</span>
           </div>
         </article>
       ))}

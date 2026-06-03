@@ -445,6 +445,11 @@ h2 {
   border: 1px solid #e3e9ee;
 }
 
+.result-values--missing {
+  border-color: #eed9a9;
+  background: #fffaf0;
+}
+
 .result-values strong {
   display: block;
   margin-bottom: 10px;
@@ -480,6 +485,44 @@ h2 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: inherit;
+}
+
+.result-listing,
+.result-evidence {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.result-listing li,
+.result-evidence li {
+  color: #4a5a6b;
+}
+
+.result-evidence {
+  padding-left: 0;
+  list-style: none;
+}
+
+.result-evidence li {
+  padding: 10px;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.result-evidence__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: #647386;
+  font-size: 0.82rem;
+}
+
+.result-evidence p {
+  margin: 0;
+  color: #243444;
 }
 
 .result-row__meta {

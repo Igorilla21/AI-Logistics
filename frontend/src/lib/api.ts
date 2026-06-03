@@ -29,6 +29,15 @@ export type ValidationResult = {
   fields: string[];
   observed_values: Record<string, unknown>;
   expected_values?: Record<string, unknown> | null;
+  evidence: ValidationEvidence[];
+  confidence?: number | null;
+};
+
+export type ValidationEvidence = {
+  document_type: string;
+  page_no: number;
+  field_name?: string | null;
+  text_snippet: string;
   confidence?: number | null;
 };
 

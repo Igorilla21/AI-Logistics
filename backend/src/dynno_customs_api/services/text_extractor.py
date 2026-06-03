@@ -78,6 +78,15 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
             text, r"\bEmpty bag net weight:\s*([0-9][0-9\s.,]*)\s*kg/bag", "empty_package_weight_kg"
         )
         fields.has_pallets = _pallet_presence_field(text)
+        fields.items_quantity = _first_integer_field(
+            text,
+            "items_quantity",
+            [
+                r"\b(\d+)\s*BAGS\b",
+                r"\b(\d+)\s*PCS\b",
+                r"\b(\d+)\s*UNITS\b",
+            ],
+        )
         fields.packages_quantity = _integer_field(text, r"\b(\d+)\s*BAGS\b", "packages_quantity")
         fields.gross_weight_kg = _decimal_field(text, r"\b(\d[\d\s.,]*)\s*KGS\s+(\d[\d\s.,]*)\s*KGS\b", "gross_weight_kg")
         net_match = re.search(r"\b(\d[\d\s.,]*)\s*KGS\s+(\d[\d\s.,]*)\s*KGS\b", text, re.IGNORECASE)
@@ -181,6 +190,7 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
                 r"\b(\d[\d\s.,]*)\s*KGS\s+(?:TOTAL|HS CODE|FREIGHT|30\.0000 CBM|27 Container)",
                 r"\b(\d[\d\s.,]*)KGS\s*G\.?W\.?",
                 r"\bTOTAL:\s*\d+\s+(\d[\d\s.,]*)\s+SHIPPED ON BOARD\b",
+                r"\bTOTAL:\s*\d+\s+(\d[\d\s.,]*)\s+ABOVE PARTICULARS\b",
             ],
             confidence=0.78,
         )

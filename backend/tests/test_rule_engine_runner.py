@@ -211,6 +211,76 @@ def test_rule_r015_uses_pallet_applicability_signal() -> None:
     assert _result_by_code(missing_details_report, "R015").status == "failed"
 
 
+def test_rule_r016_uses_non_pallet_formula_when_has_pallets_is_false() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        gross_weight_kg=_decimal(18144.0),
+                        net_weight_kg=_decimal(18000.0),
+                        empty_package_weight_kg=_decimal(0.2),
+                        items_quantity=_integer(720),
+                        package_type=_string("bags"),
+                        has_pallets=_boolean(False),
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R016").status == "passed"
+
+
+def test_rule_r016_requires_pallet_fields_when_has_pallets_is_true() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        gross_weight_kg=_decimal(18144.0),
+                        net_weight_kg=_decimal(18000.0),
+                        empty_package_weight_kg=_decimal(0.2),
+                        items_quantity=_integer(720),
+                        has_pallets=_boolean(True),
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R016").status == "skipped"
+
+
+def test_rule_r016_warns_when_non_pallet_packaging_has_large_gross_minus_net_delta() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        gross_weight_kg=_decimal(18350.0),
+                        net_weight_kg=_decimal(18000.0),
+                        empty_package_weight_kg=_decimal(0.2),
+                        items_quantity=_integer(720),
+                        package_type=_string("pkg"),
+                        has_pallets=_boolean(False),
+                    ),
+                )
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R016")
+
+    assert result.status == "failed"
+    assert result.severity == "warning"
+    assert result.observed_values["packing_list.gross_minus_net_weight_kg"] == 350.0
+    assert "pkg" in result.expected_values["package_types_to_check_for_pallets"]
+
+
 def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -> None:
     pack = document_pack_store.save(
         _pack(
