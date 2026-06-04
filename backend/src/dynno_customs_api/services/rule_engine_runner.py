@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from difflib import SequenceMatcher
 from typing import Any
 from uuid import uuid4
 
@@ -35,6 +36,35 @@ NON_PALLET_PACKAGE_TYPES = {
     "pkg",
 }
 NON_PALLET_GROSS_NET_WARNING_THRESHOLD_KG = 300.0
+OCR_CONFUSABLES = str.maketrans(
+    {
+        "А": "A",
+        "В": "B",
+        "С": "C",
+        "Е": "E",
+        "Н": "H",
+        "К": "K",
+        "М": "M",
+        "О": "O",
+        "Р": "P",
+        "Т": "T",
+        "У": "Y",
+        "Х": "X",
+        "а": "a",
+        "е": "e",
+        "о": "o",
+        "р": "p",
+        "с": "c",
+        "у": "y",
+        "х": "x",
+        "к": "k",
+        "м": "m",
+        "н": "h",
+        "в": "b",
+        "і": "i",
+        "І": "I",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,11 +253,21 @@ def _normalize_value(value: Any) -> Any:
 
 
 def _normalize_string(value: str) -> str:
-    text = value.casefold().strip()
+    text = value.translate(OCR_CONFUSABLES).casefold().strip()
     text = re.sub(r"[.,;:]+", " ", text)
-    text = re.sub(r"\b(co)\s+(ltd)\b", r"\1 \2", text)
+    text = re.sub(r"[|]+", " ", text)
+    text = re.sub(r"\b(co)\s*,?\s*(ltd)\b", r"\1 \2", text)
+    text = re.sub(r"\b(company|limited liability company|the)\b", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def _string_values_match(left: str, right: str, similarity_threshold: float | None = None) -> bool:
+    if left == right:
+        return True
+    if similarity_threshold is None:
+        return False
+    return SequenceMatcher(None, left, right).ratio() >= similarity_threshold
 
 
 def _observed(values: Sequence[FieldValue]) -> dict[str, Any]:
@@ -269,6 +309,7 @@ def _exact_match_rule(
     pass_message: str,
     fail_message: str,
     skip_message: str,
+    similarity_threshold: float | None = None,
 ) -> ValidationResultRecord:
     values = _collect_sources(context, sources)
     if len(values) < 2:
@@ -300,7 +341,11 @@ def _exact_match_rule(
         )
 
     expected = values[0].comparable
-    status: ValidationStatus = "passed" if all(value.comparable == expected for value in values[1:]) else "failed"
+    if isinstance(expected, str):
+        matched = all(isinstance(value.comparable, str) and _string_values_match(expected, value.comparable, similarity_threshold) for value in values[1:])
+    else:
+        matched = all(value.comparable == expected for value in values[1:])
+    status: ValidationStatus = "passed" if matched else "failed"
     return _result(
         context,
         rule_code=rule_code,
@@ -594,6 +639,7 @@ def _rule_r001(context: RuleContext) -> ValidationResultRecord:
         pass_message="Shipper/manufacturer names match across available documents.",
         fail_message="Shipper/manufacturer names do not match across documents.",
         skip_message="Not enough shipper/manufacturer values were extracted to compare documents.",
+        similarity_threshold=0.84,
     )
 
 
@@ -606,6 +652,7 @@ def _rule_r002(context: RuleContext) -> ValidationResultRecord:
         pass_message="Buyer names match across available documents.",
         fail_message="Buyer names do not match across documents.",
         skip_message="Not enough buyer values were extracted to compare documents.",
+        similarity_threshold=0.92,
     )
 
 

@@ -102,6 +102,66 @@ BL_TEXT_TABLE_REAL = (
     "SHIPPED ON BOARD 17.04.26\n"
 )
 
+AIERFUKE_ADDENDUM_TEXT = (
+    "ADDENDUM № Add 05 dated 22.05.2025 to the Contract Ne AIERFUKE-SOH dated 17.01.2025 "
+    "Henan Aierfuke Chemicals Co., Ltd., hereinafter referred to as the SELLER, as one party and "
+    "Soyuzopthim Ltd., hereinafter referred to as the BUYER, as another party, have agreed on the following: "
+    "The SELLER sells and the BUYER buys on FOB, Qingdao, CHINA terms (Incoterms 2020). "
+    "Payment for the Goods should be done by the BUYER on the following conditions: Prepayment 100% "
+    "The date of shipment means the date of corresponding Bill of Lading."
+)
+
+AIERFUKE_INVOICE_TEXT = (
+    "TAY PS Be ON A уче ЕН BR ZS] HENAN ATERFUKE CHEMICALS CO., LTD. "
+    "COMMERCIAL INVOICE "
+    "INVOICE NO.: 2025С1065-05 ADDENDUM NO.: ADD 05 "
+    "DATE:JUN. 01, 2025 "
+    "S/C NO.: AIERFUKE-SOH "
+    "THE SELLER: HENAN CONJOIN-WIN INTERNATIONAL TRADING CO.,LTD "
+    "THE MANUFACTURER: HENAN AIERFUKE CHEMICALS СО., LTD. "
+    "THE BUYER: SOYUZOPTHIM LTD. "
+    "FROM: QINGDAO, CHINA TO:VRANGEL, RUSSIA "
+    "POLY ALUMINIUM CHLORIDE INDUSTRIAL GRADE 22 42900 "
+    "FOB QINGDAO "
+    "PAYMENT: 100% T/T IN ADVANCE"
+)
+
+AIERFUKE_PACKING_TEXT = (
+    "PACKING LIST "
+    "INVOICE NO.: 2025С1065-05 ADDENDUM NO.: ADD 05 "
+    "DATE:JUN. 01, 2025 "
+    "S/C NO.: ATIERFUKE-SOH "
+    "THE SELLER: HENAN CONJOIN-WIN INTERNATIONAL TRADING CO.,LTD "
+    "THE MANUFACTURER: HENAN АТЕВЕОКЕ CHEMICALS CO., LTD. "
+    "THE BUYER: SOYUZOPTHIM LTD. "
+    "PAYMENT: 100% T/T IN ADVANCE. "
+    "CONTAINER NO.: CLHU3822754 "
+    "PACKING :25KGS/BAG POLY ALUMINIUM CHLORIDE 22088 22000 30 "
+    "880BAGS INDUSTRIAL GRADE MADE IN CHINA"
+)
+
+AIERFUKE_BL_TEXT = (
+    "THROUGH TRANSPORT BILL OF LADING\n"
+    "Shipper\n"
+    "BOOKING NUMBER BILL OF LADING NUMBER\n"
+    "HENAN АТЕВРОКЕ CHEMICALS CO.,LTD.\n"
+    "THE (WEST) INDUSTRIES CLUSTER AREA OF JIAOZUO CITY, HENAN PROVINCE,CHINA\n"
+    "TEL:(+86 391)3126812 LED417527A LED417527A\n"
+    "Consignee\n"
+    "SOYUZOPTHIM LTD.\n"
+    "CLHU3822754 20GP COC STF805711 POLY ALUMINIUM CHLORIDE 880 BAGS\n"
+    "TOTAL NUMBER OF CARGO PLACES RECEIVED BY THE CARRIER SHIPPED ON BOARD 10.06.2025\n"
+)
+
+AIERFUKE_CO_TEXT = (
+    "1. Exporter HENAN ATERFUKE CHEMICALS CO. , LTD. "
+    "2. Consignee SOYUZOPTHIM LTD. "
+    "10. Number and date of invoices "
+    "N/M TWO THOUSAND SIX HUNDRED AND FORTY (2640) 66264KGS G.W. | 2025C1065 "
+    "BAGS OF POLY ALUMINIUM CHLORIDE JUN. 01, 2025 "
+    "produced in China"
+)
+
 
 def test_extract_invoice_fields_from_ocr_text() -> None:
     fields, line_items = extract_fields("invoice", INVOICE_TEXT)
@@ -229,3 +289,69 @@ def test_extract_bill_of_lading_gross_weight_from_multiline_table_text() -> None
     fields, _ = extract_fields("mbl", BL_TEXT_TABLE_REAL)
 
     assert fields.gross_weight_kg.value == 18144.0
+
+
+def test_extract_aierfuke_addendum_fields_from_ocr_text() -> None:
+    fields, _ = extract_fields("addendum", AIERFUKE_ADDENDUM_TEXT)
+
+    assert fields.addendum_no.value == "ADD 05"
+    assert fields.contract_no.value == "AIERFUKE-SOH"
+    assert fields.seller_name.value == "Henan Aierfuke Chemicals Co., Ltd"
+    assert fields.buyer_name.value == "Soyuzopthim Ltd"
+    assert fields.payment_terms.value == "Prepayment 100%"
+
+
+def test_extract_aierfuke_invoice_fields_from_ocr_text() -> None:
+    fields, line_items = extract_fields("invoice", AIERFUKE_INVOICE_TEXT)
+
+    assert fields.shipper_name.value == "HENAN AIERFUKE CHEMICALS CO., LTD"
+    assert fields.buyer_name.value == "SOYUZOPTHIM LTD"
+    assert fields.invoice_no.value == "2025C1065-05"
+    assert fields.contract_no.value == "AIERFUKE-SOH"
+    assert fields.addendum_no.value == "ADD 05"
+    assert fields.total_amount.value == 42900.0
+    assert len(line_items) == 1
+    assert line_items[0].product_name_raw.value == "POLY ALUMINIUM CHLORIDE INDUSTRIAL GRADE"
+    assert line_items[0].quantity.value == 22.0
+    assert line_items[0].unit_price.value == 1950.0
+    assert line_items[0].line_total.value == 42900.0
+
+
+def test_extract_aierfuke_packing_list_fields_from_ocr_text() -> None:
+    fields, line_items = extract_fields("packing_list", AIERFUKE_PACKING_TEXT)
+
+    assert fields.shipper_name.value == "HENAN ATEBEOKE CHEMICALS CO., LTD"
+    assert fields.buyer_name.value == "SOYUZOPTHIM LTD"
+    assert fields.invoice_no.value == "2025C1065-05"
+    assert fields.contract_no.value == "ATIERFUKE-SOH"
+    assert fields.addendum_no.value == "ADD 05"
+    assert fields.container_no.value == "CLHU3822754"
+    assert fields.package_type.value == "BAG"
+    assert fields.packages_quantity.value == 880
+    assert fields.gross_weight_kg.value == 22088.0
+    assert fields.net_weight_kg.value == 22000.0
+    assert fields.package_weight_kg.value == 88.0
+    assert round(fields.empty_package_weight_kg.value, 2) == 0.10
+    assert len(line_items) == 1
+    assert line_items[0].quantity.value == 22000.0
+
+
+def test_extract_aierfuke_bill_of_lading_fields_from_ocr_text() -> None:
+    fields, _ = extract_fields("mbl", AIERFUKE_BL_TEXT)
+
+    assert fields.shipper_name.value == "HENAN ATEBPOKE CHEMICALS CO.,LTD"
+    assert fields.buyer_name.value == "SOYUZOPTHIM LTD"
+    assert fields.bl_no.value == "LED417527A"
+    assert fields.container_no.value == "CLHU3822754"
+    assert fields.packages_quantity.value == 880
+    assert fields.bl_date.value.isoformat() == "2025-06-10"
+
+
+def test_extract_aierfuke_certificate_of_origin_fields_from_ocr_text() -> None:
+    fields, _ = extract_fields("certificate_of_origin", AIERFUKE_CO_TEXT)
+
+    assert fields.shipper_name.value == "HENAN ATERFUKE CHEMICALS CO. , LTD"
+    assert fields.buyer_name.value == "SOYUZOPTHIM LTD"
+    assert fields.invoice_no.value == "2025C1065"
+    assert fields.invoice_date.value.isoformat() == "2025-06-01"
+    assert fields.gross_weight_kg.value == 66264.0

@@ -281,6 +281,29 @@ def test_rule_r016_warns_when_non_pallet_packaging_has_large_gross_minus_net_del
     assert "pkg" in result.expected_values["package_types_to_check_for_pallets"]
 
 
+def test_rule_r001_tolerates_ocr_noise_in_company_names() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "addendum",
+                    NormalizedDocumentFieldsRecord(shipper_name=_string("HENAN AIERFUKE CHEMICALS CO., LTD")),
+                ),
+                _document(
+                    "invoice",
+                    NormalizedDocumentFieldsRecord(shipper_name=_string("HENAN ATERFUKE CHEMICALS CO., LTD")),
+                ),
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(shipper_name=_string("HENAN ATEBPOKE CHEMICALS CO.,LTD")),
+                ),
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R001").status == "passed"
+
+
 def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -> None:
     pack = document_pack_store.save(
         _pack(
