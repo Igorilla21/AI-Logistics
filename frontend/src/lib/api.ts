@@ -49,14 +49,38 @@ export type ValidationResultGroups = {
   passed: ValidationResult[];
 };
 
+export type NormalizedField = {
+  value?: unknown;
+  raw_value?: unknown;
+  normalized_value?: unknown;
+  confidence?: number | null;
+  page_no?: number | null;
+  text_snippet?: string | null;
+  derived?: boolean | null;
+  unit?: string | null;
+  [key: string]: unknown;
+};
+
+export type NormalizedFieldValue =
+  | NormalizedField
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | unknown[]
+  | Record<string, unknown>;
+
+export type NormalizedLineItem = Record<string, NormalizedFieldValue>;
+
 export type NormalizedDocument = {
   document_id: string;
   document_type: string;
   source_file_name: string;
   pages: number;
   extraction_status: string;
-  fields: Record<string, unknown>;
-  line_items: Record<string, unknown>[];
+  fields: Record<string, NormalizedFieldValue>;
+  line_items: NormalizedLineItem[];
 };
 
 export type ValidationRunResponse = {

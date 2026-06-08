@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite+pysqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
     database_echo: bool = False
     tesseract_cmd: Path | str = DEFAULT_TESSERACT_CMD
+    ocr_provider: str = "tesseract"
     ocr_langs: str = "eng+rus"
     ocr_pdf_dpi: int = 300
 

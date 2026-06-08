@@ -9,6 +9,7 @@ from dynno_customs_api.models.domain import (
     NormalizedDocumentRecord,
     OcrDocumentResultRecord,
     OcrPageResultRecord,
+    OcrTextLineRecord,
 )
 from dynno_customs_api.services.document_pack_store import InMemoryDocumentPackStore, SqlDocumentPackStore
 
@@ -75,10 +76,23 @@ def test_sql_store_roundtrip() -> None:
                         confidence=0.97,
                         image_width=100,
                         image_height=50,
+                        lines=[
+                            OcrTextLineRecord(
+                                page_no=1,
+                                text="invoice text",
+                                confidence=0.97,
+                                block_no=1,
+                                paragraph_no=1,
+                                line_no=1,
+                                word_count=2,
+                            )
+                        ],
+                        provider_metadata={"word_count": 2},
                     )
                 ],
                 raw_text="invoice text",
                 raw_text_ref="storage/ocr/test/invoice.txt",
+                provider_metadata={"page_count": 1},
                 created_at=now,
             )
         ],

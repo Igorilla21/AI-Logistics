@@ -17,6 +17,9 @@ import {
   fetchSchemaIndex,
   HealthResponse,
   NormalizedDocument,
+  NormalizedField,
+  NormalizedFieldValue,
+  NormalizedLineItem,
   ValidationResult,
   ValidationRunResponse,
   ValidationRunSummary,
@@ -84,6 +87,26 @@ type ActivityItem = {
   message: string;
   timestamp: string | null;
   tone: StageStatus | "neutral";
+};
+
+type WorkspaceStateTone = "neutral" | "info" | "warning" | "problem";
+
+type ExtractionFieldView = {
+  confidence: number | null;
+  derived: boolean;
+  key: string;
+  label: string;
+  normalizedValue: string | null;
+  pageNo: number | null;
+  primaryValue: string;
+  rawValue: string | null;
+  snippet: string | null;
+  structured: boolean;
+};
+
+type ExtractionLineItemView = {
+  fields: ExtractionFieldView[];
+  label: string;
 };
 
 const NAV_ITEMS: Array<{ icon: IconName; label: string; badge?: string; active?: boolean }> = [
@@ -392,15 +415,129 @@ function formatValue(value: unknown): string {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStructuredField(value: unknown): value is NormalizedField {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return [
+    "value",
+    "raw_value",
+    "normalized_value",
+    "confidence",
+    "text_snippet",
+    "derived",
+    "page_no",
+    "unit",
+  ].some((key) => key in value);
+}
+
+function formatMeasuredValue(value: unknown, unit?: string | null): string {
+  const formatted = formatValue(value);
+  if (formatted === "—" || !unit) {
+    return formatted;
+  }
+
+  if (formatted.toLowerCase().includes(String(unit).toLowerCase())) {
+    return formatted;
+  }
+
+  return `${formatted} ${unit}`;
+}
+
+function getFieldDisplayValue(value: NormalizedFieldValue | undefined): string | null {
+  if (!hasMeaningfulValue(value)) {
+    return null;
+  }
+
+  if (isStructuredField(value)) {
+    return formatMeasuredValue(
+      value.value ?? value.normalized_value ?? value.raw_value,
+      typeof value.unit === "string" ? value.unit : null,
+    );
+  }
+
+  return formatValue(value);
+}
+
+function getFieldStringValue(value: NormalizedFieldValue | undefined): string | null {
+  const displayValue = getFieldDisplayValue(value);
+  if (!displayValue || displayValue === "—") {
+    return null;
+  }
+
+  return displayValue;
+}
+
+function buildExtractionFieldView(key: string, value: NormalizedFieldValue): ExtractionFieldView {
+  if (isStructuredField(value)) {
+    return {
+      confidence: typeof value.confidence === "number" ? value.confidence : null,
+      derived: value.derived === true,
+      key,
+      label: formatFieldLabel(key),
+      normalizedValue: hasMeaningfulValue(value.normalized_value)
+        ? formatMeasuredValue(value.normalized_value, typeof value.unit === "string" ? value.unit : null)
+        : null,
+      pageNo: typeof value.page_no === "number" ? value.page_no : null,
+      primaryValue: formatMeasuredValue(
+        value.value ?? value.normalized_value ?? value.raw_value,
+        typeof value.unit === "string" ? value.unit : null,
+      ),
+      rawValue: hasMeaningfulValue(value.raw_value) ? formatValue(value.raw_value) : null,
+      snippet: typeof value.text_snippet === "string" && value.text_snippet.trim().length > 0 ? value.text_snippet.trim() : null,
+      structured: true,
+    };
+  }
+
+  return {
+    confidence: null,
+    derived: false,
+    key,
+    label: formatFieldLabel(key),
+    normalizedValue: null,
+    pageNo: null,
+    primaryValue: formatValue(value),
+    rawValue: null,
+    snippet: null,
+    structured: false,
+  };
+}
+
+function buildLineItemLabel(item: NormalizedLineItem, index: number): string {
+  const lineNoValue = isRecord(item) ? item.line_no : null;
+  const resolvedLineNo =
+    typeof lineNoValue === "number" || typeof lineNoValue === "string" ? formatValue(lineNoValue) : String(index + 1);
+
+  return `Line item ${resolvedLineNo}`;
+}
+
+function getConfidenceTone(confidence: number | null): "high" | "medium" | "low" | "unknown" {
+  if (confidence === null) {
+    return "unknown";
+  }
+  if (confidence >= 0.85) {
+    return "high";
+  }
+  if (confidence >= 0.65) {
+    return "medium";
+  }
+  return "low";
+}
+
 function getDocumentField(document: NormalizedDocument | null | undefined, keys: string[]): string | null {
   if (!document) {
     return null;
   }
 
   for (const key of keys) {
-    const value = document.fields[key];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
+    const value = getFieldStringValue(document.fields[key]);
+    if (value) {
+      return value;
     }
   }
 
@@ -697,12 +834,47 @@ function HistoryList({
   );
 }
 
+function WorkspaceStatePanel({
+  actionLabel,
+  icon,
+  message,
+  onAction,
+  title,
+  tone,
+}: {
+  actionLabel?: string;
+  icon: IconName;
+  message: string;
+  onAction?: () => void;
+  title: string;
+  tone: WorkspaceStateTone;
+}) {
+  return (
+    <section className={`workspace-state workspace-state--${tone}`}>
+      <div className={`workspace-state__icon workspace-state__icon--${tone}`}>
+        <AppIcon name={icon} className="app-icon" />
+      </div>
+      <div className="workspace-state__copy">
+        <strong>{title}</strong>
+        <p>{message}</p>
+      </div>
+      {actionLabel && onAction ? (
+        <button className="ghost-button workspace-state__action" type="button" onClick={onAction}>
+          {actionLabel}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [history, setHistory] = useState<ValidationRunSummary[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isOpeningRun, setIsOpeningRun] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [run, setRun] = useState<ValidationRunResponse | null>(null);
   const [schemas, setSchemas] = useState<string[]>([]);
@@ -716,6 +888,7 @@ export default function App() {
     let active = true;
 
     async function loadInitialState() {
+      setIsInitialLoading(true);
       try {
         const [healthResponse, schemaResponse] = await Promise.all([fetchHealth(), fetchSchemaIndex()]);
         if (!active) {
@@ -726,6 +899,10 @@ export default function App() {
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Unable to connect to API.");
+        }
+      } finally {
+        if (active) {
+          setIsInitialLoading(false);
         }
       }
     }
@@ -844,11 +1021,35 @@ export default function App() {
     null;
 
   const selectedBytes = useMemo(() => files.reduce((total, file) => total + file.size, 0), [files]);
+  const isWorkspaceBooting = isInitialLoading || isHistoryLoading || isOpeningRun;
+  const showEmptyStartState = !run && !isWorkspaceBooting && !isSubmitting;
+
+  function handleClearSearch() {
+    setSearchQuery("");
+  }
+
+  function handleRetryBootstrap() {
+    window.location.reload();
+  }
+
   const activeFieldEntries = useMemo(
     () =>
       Object.entries(activeStage?.document?.fields ?? {})
         .filter(([, value]) => hasMeaningfulValue(value))
-        .slice(0, 14),
+        .map(([key, value]) => buildExtractionFieldView(key, value))
+        .sort((left, right) => Number(right.structured) - Number(left.structured)),
+    [activeStage],
+  );
+  const activeLineItemEntries = useMemo(
+    () =>
+      (activeStage?.document?.line_items ?? []).map((item, index) => ({
+        fields: Object.entries(item)
+          .filter(([key, value]) => key !== "line_no" && hasMeaningfulValue(value))
+          .map(([key, value]) => buildExtractionFieldView(key, value))
+          .sort((left, right) => Number(right.structured) - Number(left.structured)),
+        label: buildLineItemLabel(item, index),
+      }))
+      .filter((item) => item.fields.length > 0),
     [activeStage],
   );
 
@@ -860,6 +1061,7 @@ export default function App() {
 
   async function handleOpenRun(packId: string) {
     setError(null);
+    setIsOpeningRun(true);
     try {
       const response = await fetchValidationRun(packId);
       setRun(response);
@@ -867,6 +1069,8 @@ export default function App() {
       setActiveStageId(getDefaultStageId(stages));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to open shipment.");
+    } finally {
+      setIsOpeningRun(false);
     }
   }
 
@@ -1098,6 +1302,24 @@ export default function App() {
 
         {error ? <div className="error-banner">{error}</div> : null}
 
+        {isSubmitting ? (
+          <WorkspaceStatePanel
+            icon="refresh"
+            tone="info"
+            title="Validation in progress"
+            message={`OCR, extraction, and rule checks are running for ${files.length} staged ${files.length === 1 ? "document" : "documents"}.`}
+          />
+        ) : null}
+
+        {isWorkspaceBooting && !run && !isSubmitting ? (
+          <WorkspaceStatePanel
+            icon="refresh"
+            tone="neutral"
+            title="Loading workspace"
+            message="Connecting to the API, loading shipment history, and restoring the latest validation run."
+          />
+        ) : null}
+
         {run ? (
           <>
             <section className="summary-band">
@@ -1195,6 +1417,9 @@ export default function App() {
                 <div className="empty-panel">
                   <strong>No stages match “{searchQuery}”.</strong>
                   <span>Try another document name, rule code, or issue text.</span>
+                  <button className="ghost-button" type="button" onClick={handleClearSearch}>
+                    Clear search
+                  </button>
                 </div>
               )}
             </section>
@@ -1286,17 +1511,104 @@ export default function App() {
                         </div>
                       </div>
 
-                      {activeFieldEntries.length > 0 ? (
-                        <dl className="field-grid">
-                          {activeFieldEntries.map(([key, value]) => (
-                            <div key={`${activeStage.id}-${key}`} className="field-grid__item">
-                              <dt>{formatFieldLabel(key)}</dt>
-                              <dd>
-                                <pre>{formatValue(value)}</pre>
-                              </dd>
+                      {activeFieldEntries.length > 0 || activeLineItemEntries.length > 0 ? (
+                        <section className="extraction-review">
+                          {activeFieldEntries.length > 0 ? (
+                            <>
+                              <div className="extraction-review__head">
+                                <span className="section-eyebrow">Field review</span>
+                                <span className="document-pill">{activeFieldEntries.length} extracted fields</span>
+                              </div>
+
+                              <dl className="field-grid">
+                                {activeFieldEntries.map((field) => (
+                                  <div key={`${activeStage.id}-${field.key}`} className="field-grid__item">
+                                    <dt>{field.label}</dt>
+                                    <dd className="field-grid__value">{field.primaryValue}</dd>
+
+                                    <div className="field-grid__meta">
+                                      {field.derived ? <span className="field-badge field-badge--derived">Derived</span> : null}
+                                      {field.confidence !== null ? (
+                                        <span className={`field-badge field-badge--${getConfidenceTone(field.confidence)}`}>
+                                          {Math.round(field.confidence * 100)}% confidence
+                                        </span>
+                                      ) : null}
+                                      {field.pageNo !== null ? (
+                                        <span className="field-badge field-badge--page">Page {field.pageNo}</span>
+                                      ) : null}
+                                    </div>
+
+                                    {field.rawValue && field.rawValue !== field.primaryValue ? (
+                                      <div className="field-grid__detail">
+                                        <span>Raw</span>
+                                        <strong>{field.rawValue}</strong>
+                                      </div>
+                                    ) : null}
+
+                                    {field.normalizedValue && field.normalizedValue !== field.primaryValue ? (
+                                      <div className="field-grid__detail">
+                                        <span>Normalized</span>
+                                        <strong>{field.normalizedValue}</strong>
+                                      </div>
+                                    ) : null}
+
+                                    {field.snippet ? (
+                                      <div className="field-grid__snippet">
+                                        <span>Source snippet</span>
+                                        <p>{field.snippet}</p>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </dl>
+                            </>
+                          ) : null}
+
+                          {activeLineItemEntries.length > 0 ? (
+                            <div className="line-items-review">
+                              <div className="extraction-review__head">
+                                <span className="section-eyebrow">Line items</span>
+                                <span className="document-pill">{activeLineItemEntries.length} rows</span>
+                              </div>
+
+                              <div className="line-items-review__stack">
+                                {activeLineItemEntries.map((item) => (
+                                  <section key={`${activeStage.id}-${item.label}`} className="line-item-card">
+                                    <div className="line-item-card__head">
+                                      <strong>{item.label}</strong>
+                                      <span>{item.fields.length} extracted fields</span>
+                                    </div>
+
+                                    <dl className="field-grid field-grid--line-item">
+                                      {item.fields.map((field) => (
+                                        <div key={`${item.label}-${field.key}`} className="field-grid__item field-grid__item--compact">
+                                          <dt>{field.label}</dt>
+                                          <dd className="field-grid__value">{field.primaryValue}</dd>
+                                          <div className="field-grid__meta">
+                                            {field.derived ? (
+                                              <span className="field-badge field-badge--derived">Derived</span>
+                                            ) : null}
+                                            {field.confidence !== null ? (
+                                              <span className={`field-badge field-badge--${getConfidenceTone(field.confidence)}`}>
+                                                {Math.round(field.confidence * 100)}%
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          {field.snippet ? (
+                                            <div className="field-grid__snippet">
+                                              <span>Source snippet</span>
+                                              <p>{field.snippet}</p>
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      ))}
+                                    </dl>
+                                  </section>
+                                ))}
+                              </div>
                             </div>
-                          ))}
-                        </dl>
+                          ) : null}
+                        </section>
                       ) : (
                         <div className="detail-empty">
                           <strong>No extracted values yet</strong>
@@ -1395,22 +1707,30 @@ export default function App() {
               </article>
             </section>
           </>
-        ) : (
+        ) : showEmptyStartState ? (
           <section className="empty-state-panel">
             <span className="section-eyebrow">Validation-only internal pipeline</span>
-            <h2>Open the latest shipment or stage a new document pack</h2>
+            <h2>{history.length > 0 ? "Restore a shipment or start a fresh validation run" : "Stage the first document pack"}</h2>
             <p>
-              Select shipment documents, run OCR and validation, and inspect the workflow as a readable shipment screen
-              instead of a raw report dump.
+              {health
+                ? "Select shipment documents, run OCR and validation, and inspect the workflow as a readable shipment screen instead of a raw report dump."
+                : "The API is not responding yet. Reconnect the backend first, then stage a shipment for OCR, extraction, and rule validation."}
             </p>
             <div className="button-row">
-              <button className="primary-button primary-button--inline" type="button" onClick={() => fileInputRef.current?.click()}>
-                <AppIcon name="upload" className="app-icon" />
-                <span>Select Documents</span>
-              </button>
+              {health ? (
+                <button className="primary-button primary-button--inline" type="button" onClick={() => fileInputRef.current?.click()}>
+                  <AppIcon name="upload" className="app-icon" />
+                  <span>Select Documents</span>
+                </button>
+              ) : (
+                <button className="ghost-button" type="button" onClick={handleRetryBootstrap}>
+                  <AppIcon name="refresh" className="app-icon" />
+                  <span>Retry connection</span>
+                </button>
+              )}
             </div>
           </section>
-        )}
+        ) : null}
       </main>
     </div>
   );

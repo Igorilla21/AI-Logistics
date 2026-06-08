@@ -75,6 +75,19 @@ class NormalizedDocumentListResponse(BaseModel):
     items: list[NormalizedDocumentResponse]
 
 
+class OcrTextLineResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    page_no: int
+    text: str
+    confidence: float | None = None
+    block_no: int | None = None
+    paragraph_no: int | None = None
+    line_no: int | None = None
+    word_count: int = 0
+    bounding_box: dict[str, Any] | None = None
+
+
 class OcrPageResultResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +96,8 @@ class OcrPageResultResponse(BaseModel):
     confidence: float | None = None
     image_width: int | None = None
     image_height: int | None = None
+    lines: list[OcrTextLineResponse] = Field(default_factory=list)
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class OcrDocumentResultResponse(BaseModel):
@@ -97,6 +112,7 @@ class OcrDocumentResultResponse(BaseModel):
     pages: list[OcrPageResultResponse]
     raw_text: str
     raw_text_ref: str | None = None
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None
     created_at: datetime
 

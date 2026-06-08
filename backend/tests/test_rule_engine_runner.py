@@ -304,6 +304,27 @@ def test_rule_r001_tolerates_ocr_noise_in_company_names() -> None:
     assert _result_by_code(report, "R001").status == "passed"
 
 
+def test_rule_r021_warns_when_expiry_date_is_missing_but_manufacture_date_exists() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "coa",
+                    NormalizedDocumentFieldsRecord(
+                        manufacture_date=_date(date(2026, 5, 28)),
+                    ),
+                )
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R021")
+
+    assert result.status == "failed"
+    assert result.severity == "warning"
+    assert result.observed_values["coa.manufacture_date"] == date(2026, 5, 28)
+
+
 def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -> None:
     pack = document_pack_store.save(
         _pack(

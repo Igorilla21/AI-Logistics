@@ -357,6 +357,8 @@ def extract_fields(document_type: str, raw_text: str | None) -> tuple[Normalized
             "gross_weight_kg",
             [
                 r"\bGROSS WEIGHT(?:,\s*KGS| KGS)?\s*(\d[\d\s.,]*)\b",
+                r"\b(?:BAGS|PALLETS|DRUMS|BOXES)\s+(\d[\d\s.,]*)\s+\d+(?:[.,]\d+)?\s+TOTAL\b",
+                r"\bPOLY ALUMINIUM CHLORIDE\s+\d+\s+BAGS\s+(\d[\d\s.,]*)\s+\d+(?:[.,]\d+)?\s+TOTAL\b",
                 r"\b(\d[\d\s.,]*)\s*KGS\s+(?:TOTAL|HS CODE|FREIGHT|30\.0000 CBM|27 Container)",
                 r"\b(\d[\d\s.,]*)KGS\s*G\.?W\.?",
                 r"\bTOTAL:\s*\d+\s+(\d[\d\s.,]*)\s+SHIPPED ON BOARD\b",

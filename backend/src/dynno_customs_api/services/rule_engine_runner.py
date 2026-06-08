@@ -1356,14 +1356,57 @@ def _rule_r020(context: RuleContext) -> ValidationResultRecord:
 
 
 def _rule_r021(context: RuleContext) -> ValidationResultRecord:
-    return _presence_rule(
+    coa = context.doc("coa")
+    if coa is None:
+        return _result(
+            context,
+            rule_code="R021",
+            severity="warning",
+            status="skipped",
+            message="COA is missing.",
+            documents=["coa"],
+            fields=["expiry_date", "manufacture_date"],
+        )
+
+    expiry_date = _field_values(coa, "expiry_date")
+    if expiry_date:
+        return _result(
+            context,
+            rule_code="R021",
+            severity="warning",
+            status="passed",
+            message="COA contains expiry date.",
+            documents=["coa"],
+            fields=["expiry_date"],
+            observed_values=_observed(expiry_date),
+            evidence=_evidence(expiry_date),
+            confidence=_confidence(expiry_date),
+        )
+
+    manufacture_date = _field_values(coa, "manufacture_date")
+    if manufacture_date:
+        return _result(
+            context,
+            rule_code="R021",
+            severity="warning",
+            status="failed",
+            message="COA expiry date is missing, but manufacture date is present.",
+            documents=["coa"],
+            fields=["expiry_date", "manufacture_date"],
+            observed_values=_observed(manufacture_date),
+            expected_values={"coa.expiry_date": "recommended when manufacture_date is present"},
+            evidence=_evidence(manufacture_date),
+            confidence=_confidence(manufacture_date),
+        )
+
+    return _result(
         context,
         rule_code="R021",
-        severity="error",
-        document_type="coa",
-        field_name="expiry_date",
-        pass_message="COA contains expiry date.",
-        fail_message="COA expiry date is missing.",
+        severity="warning",
+        status="skipped",
+        message="COA expiry date and manufacture date are missing.",
+        documents=["coa"],
+        fields=["expiry_date", "manufacture_date"],
     )
 
 

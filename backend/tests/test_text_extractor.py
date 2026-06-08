@@ -102,6 +102,44 @@ BL_TEXT_TABLE_REAL = (
     "SHIPPED ON BOARD 17.04.26\n"
 )
 
+BL_TEXT_PDF_LAYER_REAL = (
+    "THROUGH TRANSPORT BILL OF LADING\n"
+    "Shipper\n"
+    "BOOKING NUMBER\n"
+    "BILL OF LADING NUMBER\n"
+    "HENAN AIERFUKE CHEMICALS CO.,LTD.\n"
+    "LED417527A\n"
+    "LED417527A\n"
+    "Consignee\n"
+    "SOYUZOPTHIM LTD.\n"
+    "CONTAINER NUMBER\n"
+    "CONTAINER TYPE\n"
+    "SOC/COC\n"
+    "SEAL NUMBER\n"
+    "CARGO DESCRIPTION\n"
+    "NO. OF\n"
+    "PACKAGES\n"
+    "TYPE OF\n"
+    "PACKAGES\n"
+    "NET WEIGHT KGS GROSS WEIGHT KGS\n"
+    "VOLUME M3\n"
+    "CLHU3822754\n"
+    "20GP\n"
+    "COC\n"
+    "STF805711\n"
+    "POLY ALUMINIUM CHLORIDE\n"
+    "880\n"
+    "BAGS\n"
+    "22088\n"
+    "30\n"
+    "TOTAL\n"
+    "880\n"
+    "22088\n"
+    "30\n"
+    "SHIPPED ON BOARD\n"
+    "10.06.2025\n"
+)
+
 AIERFUKE_ADDENDUM_TEXT = (
     "ADDENDUM № Add 05 dated 22.05.2025 to the Contract Ne AIERFUKE-SOH dated 17.01.2025 "
     "Henan Aierfuke Chemicals Co., Ltd., hereinafter referred to as the SELLER, as one party and "
@@ -289,6 +327,15 @@ def test_extract_bill_of_lading_gross_weight_from_multiline_table_text() -> None
     fields, _ = extract_fields("mbl", BL_TEXT_TABLE_REAL)
 
     assert fields.gross_weight_kg.value == 18144.0
+
+
+def test_extract_bill_of_lading_gross_weight_from_pdf_text_layer_table() -> None:
+    fields, _ = extract_fields("mbl", BL_TEXT_PDF_LAYER_REAL)
+
+    assert fields.bl_no.value == "LED417527A"
+    assert fields.container_no.value == "CLHU3822754"
+    assert fields.packages_quantity.value == 880
+    assert fields.gross_weight_kg.value == 22088.0
 
 
 def test_extract_aierfuke_addendum_fields_from_ocr_text() -> None:

@@ -204,6 +204,19 @@ class DocumentFileRecord(BaseModel):
 OcrStatus = Literal["completed", "failed"]
 
 
+class OcrTextLineRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    page_no: int = Field(ge=1)
+    text: str
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    block_no: int | None = Field(default=None, ge=0)
+    paragraph_no: int | None = Field(default=None, ge=0)
+    line_no: int | None = Field(default=None, ge=0)
+    word_count: int = Field(default=0, ge=0)
+    bounding_box: BoundingBoxRecord | None = None
+
+
 class OcrPageResultRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -212,6 +225,8 @@ class OcrPageResultRecord(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     image_width: int | None = Field(default=None, ge=1)
     image_height: int | None = Field(default=None, ge=1)
+    lines: list[OcrTextLineRecord] = Field(default_factory=list)
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class OcrDocumentResultRecord(BaseModel):
@@ -226,6 +241,7 @@ class OcrDocumentResultRecord(BaseModel):
     pages: list[OcrPageResultRecord] = Field(default_factory=list)
     raw_text: str = ""
     raw_text_ref: str | None = None
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None
     created_at: datetime
 

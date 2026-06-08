@@ -10,6 +10,7 @@ from dynno_customs_api.models.api import (
     OcrDocumentListResponse,
     OcrDocumentResultResponse,
     OcrPageResultResponse,
+    OcrTextLineResponse,
     UploadedDocument,
 )
 from dynno_customs_api.models.domain import DocumentPackRecord, NormalizedDocumentRecord, OcrDocumentResultRecord
@@ -92,11 +93,26 @@ def _to_ocr_response(result: OcrDocumentResultRecord) -> OcrDocumentResultRespon
                 confidence=page.confidence,
                 image_width=page.image_width,
                 image_height=page.image_height,
+                lines=[
+                    OcrTextLineResponse(
+                        page_no=line.page_no,
+                        text=line.text,
+                        confidence=line.confidence,
+                        block_no=line.block_no,
+                        paragraph_no=line.paragraph_no,
+                        line_no=line.line_no,
+                        word_count=line.word_count,
+                        bounding_box=line.bounding_box.model_dump(mode="json") if line.bounding_box else None,
+                    )
+                    for line in page.lines
+                ],
+                provider_metadata=page.provider_metadata,
             )
             for page in result.pages
         ],
         raw_text=result.raw_text,
         raw_text_ref=result.raw_text_ref,
+        provider_metadata=result.provider_metadata,
         error_message=result.error_message,
         created_at=result.created_at,
     )
