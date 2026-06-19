@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, MetaData, String, Table, create_engine
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, MetaData, String, Table, create_engine
 from sqlalchemy.engine import Engine
 
 from dynno_customs_api.config import settings
@@ -81,6 +81,33 @@ validation_results_table = Table(
     Column("status", String(32), nullable=False, index=True),
     Column("severity", String(32), nullable=False, index=True),
     Column("created_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("payload", JSON, nullable=False),
+)
+
+users_table = Table(
+    "users",
+    metadata,
+    Column("user_id", String(36), primary_key=True),
+    Column("email", String(320), nullable=False, unique=True, index=True),
+    Column("password_hash", String(512), nullable=False),
+    Column("full_name", String(255), nullable=False),
+    Column("role", String(64), nullable=False, index=True),
+    Column("is_active", Boolean, nullable=False, index=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("last_login_at", DateTime(timezone=True), nullable=True),
+    Column("payload", JSON, nullable=False),
+)
+
+auth_sessions_table = Table(
+    "auth_sessions",
+    metadata,
+    Column("session_id", String(36), primary_key=True),
+    Column("user_id", String(36), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("token_hash", String(64), nullable=False, unique=True, index=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("expires_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("revoked_at", DateTime(timezone=True), nullable=True, index=True),
     Column("payload", JSON, nullable=False),
 )
 

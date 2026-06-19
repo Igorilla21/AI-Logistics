@@ -26,6 +26,12 @@ DOCUMENT_TYPE_RULES: list[tuple[str, tuple[str, ...], tuple[str, ...], float]] =
         0.95,
     ),
     (
+        "transport_invoice",
+        ("transportinvoice", "freightinvoice"),
+        ("transport invoice", "freight invoice", "rail freight"),
+        0.88,
+    ),
+    (
         "invoice",
         ("invoice", "commercialinvoice", "ci", "inv"),
         ("commercial invoice",),
@@ -55,12 +61,6 @@ DOCUMENT_TYPE_RULES: list[tuple[str, tuple[str, ...], tuple[str, ...], float]] =
         ("mbl", "masterbill", "bl", "seawaybill", "swb"),
         ("master bill", "bill of lading", "sea waybill", "surrender bl"),
         0.90,
-    ),
-    (
-        "transport_invoice",
-        ("transportinvoice", "freightinvoice"),
-        ("transport invoice", "freight invoice", "rail freight"),
-        0.88,
     ),
     (
         "certificate_of_origin",

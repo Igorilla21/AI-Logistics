@@ -260,6 +260,7 @@ class DocumentPackRecord(BaseModel):
 
 ValidationSeverity = Literal["error", "warning", "info"]
 ValidationStatus = Literal["passed", "failed", "skipped", "needs_review"]
+UserRole = Literal["admin", "operator"]
 
 
 class ValidationResultRecord(BaseModel):
@@ -298,3 +299,26 @@ class ValidationReportRecord(BaseModel):
     generated_at: datetime
     summary: ValidationSummaryRecord
     results: list[ValidationResultRecord]
+
+
+class UserRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: UUID
+    email: str
+    full_name: str
+    role: UserRole
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+    last_login_at: datetime | None = None
+
+
+class AuthSessionRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: UUID
+    user_id: UUID
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None

@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: dynno-customs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dynno_customs
+      POSTGRES_USER: dynno_customs
+      POSTGRES_PASSWORD: dynno_customs_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./storage/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dynno_customs -d dynno_customs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

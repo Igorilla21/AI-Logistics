@@ -19,6 +19,7 @@ def test_classify_common_shortcuts_from_filename() -> None:
     assert classify_document("PL-05.pdf", "application/pdf").document_type == "packing_list"
     assert classify_document("Add 05 signed.pdf", "application/pdf").document_type == "addendum"
     assert classify_document("Seawaybill.pdf", "application/pdf").document_type == "mbl"
+    assert classify_document("FreightInvoice.pdf", "application/pdf").document_type == "transport_invoice"
     assert classify_document("Bank slip.pdf", "application/pdf").document_type == "payment_confirmation"
     assert classify_document("CO Copy.pdf", "application/pdf").document_type == "certificate_of_origin"
 

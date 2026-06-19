@@ -36,6 +36,22 @@ NON_PALLET_PACKAGE_TYPES = {
     "pkg",
 }
 NON_PALLET_GROSS_NET_WARNING_THRESHOLD_KG = 300.0
+COMPANY_CORE_STOP_WORDS = {
+    "a",
+    "co",
+    "company",
+    "limited",
+    "llc",
+    "ltd",
+    "ooo",
+    "s",
+    "san",
+    "sanayi",
+    "the",
+    "tic",
+    "ticaret",
+    "ve",
+}
 OCR_CONFUSABLES = str.maketrans(
     {
         "А": "A",
@@ -55,11 +71,12 @@ OCR_CONFUSABLES = str.maketrans(
         "о": "o",
         "р": "p",
         "с": "c",
+        "т": "t",
         "у": "y",
         "х": "x",
         "к": "k",
         "м": "m",
-        "н": "h",
+        "н": "n",
         "в": "b",
         "і": "i",
         "І": "I",
@@ -258,6 +275,7 @@ def _normalize_string(value: str) -> str:
     text = re.sub(r"[|]+", " ", text)
     text = re.sub(r"\b(co)\s*,?\s*(ltd)\b", r"\1 \2", text)
     text = re.sub(r"\b(company|limited liability company|the)\b", " ", text)
+    text = re.sub(r"\b(ooo|llc)\b", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -267,7 +285,22 @@ def _string_values_match(left: str, right: str, similarity_threshold: float | No
         return True
     if similarity_threshold is None:
         return False
+    if _company_core_tokens_match(left, right):
+        return True
     return SequenceMatcher(None, left, right).ratio() >= similarity_threshold
+
+
+def _company_core_tokens_match(left: str, right: str) -> bool:
+    left_tokens = _company_core_tokens(left)
+    right_tokens = _company_core_tokens(right)
+    if len(left_tokens) < 2 or len(right_tokens) < 2:
+        return False
+    smaller, larger = (left_tokens, right_tokens) if len(left_tokens) <= len(right_tokens) else (right_tokens, left_tokens)
+    return smaller.issubset(larger)
+
+
+def _company_core_tokens(value: str) -> set[str]:
+    return {token for token in value.split() if len(token) > 1 and token not in COMPANY_CORE_STOP_WORDS}
 
 
 def _observed(values: Sequence[FieldValue]) -> dict[str, Any]:
@@ -665,7 +698,7 @@ def _rule_r003(context: RuleContext) -> ValidationResultRecord:
         targets=(("addendum", "contract_no"), ("invoice", "contract_no")),
         pass_message="Contract numbers in addendum and invoice match the contract.",
         fail_message="Contract numbers in addendum or invoice do not match the contract.",
-        skip_message="Contract, addendum, or invoice contract numbers are missing.",
+        skip_message="Separate contract document is missing or unreadable, so addendum and invoice contract numbers cannot be matched to it.",
     )
 
 
@@ -748,32 +781,36 @@ def _rule_r005(context: RuleContext) -> ValidationResultRecord:
         operator=">",
         pass_message="Addendum date is later than contract date.",
         fail_message="Addendum date is not later than contract date.",
-        skip_message="Contract date or addendum date is missing.",
+        skip_message="Separate contract document date is missing, so the extracted addendum date cannot be compared to a contract date.",
     )
 
 
 def _rule_r006(context: RuleContext) -> ValidationResultRecord:
-    sources: list[SourceSpec] = [
-        ("contract", "incoterms"),
+    required_sources: list[SourceSpec] = [
         ("addendum", "incoterms"),
         ("invoice", "incoterms"),
+    ]
+    optional_sources: list[SourceSpec] = [
+        ("contract", "incoterms"),
         ("packing_list", "incoterms"),
         ("transport_invoice", "incoterms"),
     ]
+    sources = [*required_sources, *optional_sources]
     values = _collect_sources(context, sources)
+    required_values = _collect_sources(context, required_sources)
     invalid_values = [value for value in values if str(value.value).upper() not in INCOTERMS_ALLOWED]
     comparable_values = [str(value.value).upper() for value in values]
 
-    if not values:
+    if not required_values:
         return _result(
             context,
             rule_code="R006",
             severity="warning",
             status="skipped",
-            message="No Incoterms values were extracted.",
+            message="Incoterms were not extracted from the required addendum/invoice pair, so cross-document comparison was skipped.",
             documents=_documents_from_sources(sources),
             fields=["incoterms"],
-            observed_values={},
+            observed_values=_observed(values),
         )
 
     if invalid_values:
@@ -791,17 +828,20 @@ def _rule_r006(context: RuleContext) -> ValidationResultRecord:
             confidence=_confidence(values),
         )
 
-    if len(values) < 2:
+    if len(required_values) < 2:
         return _result(
             context,
             rule_code="R006",
             severity="warning",
             status="skipped",
-            message="Only one Incoterms value was extracted; cross-document comparison was skipped.",
+            message="Incoterms were extracted from only one required document (addendum or invoice); optional documents stay green and cross-document comparison was skipped.",
             documents=_documents_from_sources(sources),
             fields=["incoterms"],
             observed_values=_observed(values),
-            expected_values={"allowed_values": sorted(INCOTERMS_ALLOWED)},
+            expected_values={
+                "allowed_values": sorted(INCOTERMS_ALLOWED),
+                "required_documents": ["addendum", "invoice"],
+            },
             evidence=_evidence(values),
             confidence=_confidence(values),
         )
@@ -1021,14 +1061,68 @@ def _rule_r013(context: RuleContext) -> ValidationResultRecord:
 
 
 def _rule_r014(context: RuleContext) -> ValidationResultRecord:
-    return _presence_rule(
+    packing_list = context.doc("packing_list")
+    if packing_list is None:
+        return _result(
+            context,
+            rule_code="R014",
+            severity="error",
+            status="skipped",
+            message="Packing list is missing.",
+            documents=["packing_list"],
+            fields=["empty_package_weight_kg"],
+        )
+
+    empty_package_values = _field_values(packing_list, "empty_package_weight_kg")
+    if empty_package_values:
+        return _result(
+            context,
+            rule_code="R014",
+            severity="error",
+            status="passed",
+            message="Packing list contains empty package weight.",
+            documents=["packing_list"],
+            fields=["empty_package_weight_kg"],
+            observed_values=_observed(empty_package_values),
+            evidence=_evidence(empty_package_values),
+            confidence=_confidence(empty_package_values),
+        )
+
+    supporting_values = [
+        value
+        for value in [
+            _numeric_field(packing_list, "gross_weight_kg"),
+            _numeric_field(packing_list, "net_weight_kg"),
+            _numeric_field(packing_list, "pallet_weight_kg"),
+            _numeric_field(packing_list, "pallet_quantity"),
+            _numeric_field(packing_list, "has_pallets"),
+        ]
+        if value is not None
+    ]
+    has_pallets = next((value for value in supporting_values if value.key == "packing_list.has_pallets"), None)
+    if has_pallets is not None and bool(has_pallets.value) and len(supporting_values) == 5:
+        return _result(
+            context,
+            rule_code="R014",
+            severity="error",
+            status="skipped",
+            message="Packing list does not state empty package tare separately; palletized gross/net reconciliation uses pallet weight instead.",
+            documents=["packing_list"],
+            fields=["empty_package_weight_kg", "has_pallets", "pallet_weight_kg", "pallet_quantity"],
+            observed_values={**_observed(supporting_values), "packing_list.empty_package_weight_kg": None},
+            evidence=_evidence(supporting_values),
+            confidence=_confidence(supporting_values),
+        )
+
+    return _result(
         context,
         rule_code="R014",
         severity="error",
-        document_type="packing_list",
-        field_name="empty_package_weight_kg",
-        pass_message="Packing list contains empty package weight.",
-        fail_message="Packing list empty package weight is missing.",
+        status="failed",
+        message="Packing list empty package weight is missing.",
+        documents=["packing_list"],
+        fields=["empty_package_weight_kg"],
+        observed_values={"packing_list.empty_package_weight_kg": None},
     )
 
 
@@ -1190,6 +1284,41 @@ def _rule_r016(context: RuleContext) -> ValidationResultRecord:
     )
 
     if any(value is None for value in base_fields.values()):
+        if (
+            base_fields["empty_package_weight_kg"] is None
+            and base_fields["gross_weight_kg"] is not None
+            and base_fields["net_weight_kg"] is not None
+            and has_pallets_value is not None
+            and bool(has_pallets_value.value)
+            and all(value is not None for value in optional_pallet_fields.values())
+        ):
+            expected = float(base_fields["net_weight_kg"].value) + (
+                float(optional_pallet_fields["pallet_weight_kg"].value)
+                * float(optional_pallet_fields["pallet_quantity"].value)
+            )
+            actual = float(base_fields["gross_weight_kg"].value)
+            status: ValidationStatus = "passed" if abs(actual - expected) <= context.tolerance else "failed"
+            return _result(
+                context,
+                rule_code="R016",
+                severity="error",
+                status=status,
+                message="Packing palletized gross weight formula is valid without separately stated empty package tare."
+                if status == "passed"
+                else "Packing palletized gross weight formula is invalid.",
+                documents=["packing_list"],
+                fields=[
+                    "gross_weight_kg",
+                    "net_weight_kg",
+                    "has_pallets",
+                    "pallet_weight_kg",
+                    "pallet_quantity",
+                ],
+                observed_values=observed_values,
+                expected_values={"packing_list.gross_weight_kg": expected, "tolerance": context.tolerance},
+                evidence=evidence,
+                confidence=confidence,
+            )
         return _result(
             context,
             rule_code="R016",
@@ -1436,6 +1565,34 @@ def _rule_r022(context: RuleContext) -> ValidationResultRecord:
 
 
 def _rule_r023(context: RuleContext) -> ValidationResultRecord:
+    coa = context.doc("coa")
+    if coa is None:
+        return _result(
+            context,
+            rule_code="R023",
+            severity="error",
+            status="skipped",
+            message="COA is missing, so expiry-after-manufacture comparison was skipped.",
+            documents=["coa"],
+            fields=["expiry_date", "manufacture_date"],
+        )
+
+    expiry_date = _field_values(coa, "expiry_date")
+    manufacture_date = _field_values(coa, "manufacture_date")
+    if not expiry_date or not manufacture_date:
+        return _result(
+            context,
+            rule_code="R023",
+            severity="error",
+            status="skipped",
+            message="COA expiry-after-manufacture comparison was skipped because one of the dates is missing.",
+            documents=["coa"],
+            fields=["expiry_date", "manufacture_date"],
+            observed_values=_observed([*expiry_date, *manufacture_date]),
+            evidence=_evidence([*expiry_date, *manufacture_date]),
+            confidence=_confidence([*expiry_date, *manufacture_date]),
+        )
+
     return _date_compare_rule(
         context,
         rule_code="R023",
@@ -1445,7 +1602,7 @@ def _rule_r023(context: RuleContext) -> ValidationResultRecord:
         operator=">",
         pass_message="COA expiry date is after manufacture date.",
         fail_message="COA expiry date is not after manufacture date.",
-        skip_message="COA expiry date or manufacture date is missing.",
+        skip_message="COA expiry-after-manufacture comparison was skipped because one of the dates is missing.",
     )
 
 
@@ -1485,14 +1642,67 @@ def _rule_r025(context: RuleContext) -> ValidationResultRecord:
             documents=["hbl", "mbl", "packing_list"],
             fields=["packages_quantity"],
         )
-    return _exact_match_rule(
+
+    packing_list = context.doc("packing_list")
+    bl_values = _field_values(bl, "packages_quantity")
+    packing_values = _field_values(packing_list, "packages_quantity") if packing_list else []
+    pallet_values = _field_values(packing_list, "pallet_quantity") if packing_list else []
+    values = [*bl_values, *packing_values, *pallet_values]
+
+    if not bl_values or (not packing_values and not pallet_values):
+        return _result(
+            context,
+            rule_code="R025",
+            severity="error",
+            status="skipped",
+            message="BL vs packing-list package quantity comparison was skipped because the value was not extracted from both documents.",
+            documents=[bl.document_type, "packing_list"],
+            fields=["packages_quantity", "pallet_quantity"],
+            observed_values=_observed(values),
+            evidence=_evidence(values),
+            confidence=_confidence(values),
+        )
+
+    if any(value.uncertain for value in values):
+        return _result(
+            context,
+            rule_code="R025",
+            severity="error",
+            status="needs_review",
+            message="One or more compared values have low confidence or ambiguous candidates.",
+            documents=[bl.document_type, "packing_list"],
+            fields=["packages_quantity", "pallet_quantity"],
+            observed_values=_observed(values),
+            evidence=_evidence(values),
+            confidence=_confidence(values),
+        )
+
+    bl_value = bl_values[0].comparable
+    matched = any(value.comparable == bl_value for value in packing_values)
+    matched_pallet_quantity = False
+    if not matched and pallet_values:
+        matched_pallet_quantity = any(value.comparable == bl_value for value in pallet_values)
+        matched = matched_pallet_quantity
+
+    status: ValidationStatus = "passed" if matched else "failed"
+    return _result(
         context,
         rule_code="R025",
         severity="error",
-        sources=((bl.document_type, "packages_quantity"), ("packing_list", "packages_quantity")),
-        pass_message="BL packages quantity matches packing list.",
-        fail_message="BL packages quantity does not match packing list.",
-        skip_message="BL or packing list packages quantity is missing.",
+        status=status,
+        message=(
+            "BL packages quantity matches packing list pallet quantity."
+            if matched_pallet_quantity
+            else "BL packages quantity matches packing list."
+        )
+        if status == "passed"
+        else "BL packages quantity does not match packing list.",
+        documents=[bl.document_type, "packing_list"],
+        fields=["packages_quantity", "pallet_quantity"],
+        observed_values=_observed(values),
+        expected_values={"accepted_values": [value.value for value in [*packing_values, *pallet_values]]},
+        evidence=_evidence(values),
+        confidence=_confidence(values),
     )
 
 
@@ -1515,7 +1725,7 @@ def _rule_r026(context: RuleContext) -> ValidationResultRecord:
         sources=((bl.document_type, "container_no"), ("packing_list", "container_no")),
         pass_message="BL container number matches packing list.",
         fail_message="BL container number does not match packing list.",
-        skip_message="BL or packing list container number is missing.",
+        skip_message="BL vs packing-list container number comparison was skipped because the value was not extracted from both documents.",
     )
 
 

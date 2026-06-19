@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
+from dynno_customs_api.api.dependencies import CurrentAuthSession
 from dynno_customs_api.models.api import (
     ValidationReportResponse,
 )
@@ -16,7 +17,7 @@ router = APIRouter()
 
 
 @router.post("/reports/mock", response_model=ValidationReportResponse)
-async def create_mock_validation_report() -> ValidationReportResponse:
+async def create_mock_validation_report(_auth_session: CurrentAuthSession) -> ValidationReportResponse:
     return ValidationReportResponse(
         schema_version="1.0.0",
         report_id=uuid4(),
@@ -35,7 +36,7 @@ async def create_mock_validation_report() -> ValidationReportResponse:
 
 
 @router.post("/reports/{pack_id}", response_model=ValidationReportResponse)
-async def create_validation_report(pack_id: UUID) -> ValidationReportResponse:
+async def create_validation_report(pack_id: UUID, _auth_session: CurrentAuthSession) -> ValidationReportResponse:
     result = create_validation_report_workflow(pack_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")

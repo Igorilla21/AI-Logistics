@@ -40,6 +40,26 @@ def fake_image_to_data(image, lang, output_type):
     }
 
 
+def fake_rotated_image_to_data(image, lang, output_type):
+    assert lang == settings.ocr_langs
+    assert output_type == tesseract_ocr.pytesseract.Output.DICT
+    if image.height > image.width:
+        return {
+            "text": ["", "MATERIAL", "CERTIFICATE", "OF", "ANALYSIS", "Lot", "No", "1752/2018"],
+            "conf": ["-1", "94", "93", "92", "93", "91", "90", "90"],
+            "block_num": [0, 1, 1, 1, 1, 2, 2, 2],
+            "par_num": [0, 1, 1, 1, 1, 1, 1, 1],
+            "line_num": [0, 1, 1, 1, 1, 2, 2, 2],
+        }
+    return {
+        "text": ["", "ocr", "noise", "text", "without", "document", "signals", "bad"],
+        "conf": ["-1", "30", "32", "31", "29", "33", "30", "28"],
+        "block_num": [0, 1, 1, 1, 1, 1, 1, 1],
+        "par_num": [0, 1, 1, 1, 1, 1, 1, 1],
+        "line_num": [0, 1, 1, 1, 1, 1, 1, 1],
+    }
+
+
 def test_run_tesseract_ocr_for_image(monkeypatch) -> None:
     image_path = _test_dir() / "ocr-test.png"
     Image.new("RGB", (120, 60), "white").save(image_path)
@@ -62,6 +82,17 @@ def test_run_tesseract_ocr_for_image(monkeypatch) -> None:
     assert result.pages[0].provider_metadata["word_count"] == 2
     assert result.provider_metadata["page_count"] == 1
     assert result.provider_metadata["embedded_text_appended"] is False
+
+
+def test_ocr_image_retries_rotations_when_initial_quality_is_low(monkeypatch) -> None:
+    monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", fake_rotated_image_to_data)
+
+    result = tesseract_ocr._ocr_image(page_no=1, image=Image.new("RGB", (160, 80), "white"))
+
+    assert result.confidence == 0.9186
+    assert result.text == "MATERIAL CERTIFICATE OF ANALYSIS\nLot No 1752/2018"
+    assert result.provider_metadata["rotation_degrees"] in {90, 270}
+    assert result.provider_metadata["signal_word_count"] == 3
 
 
 def test_assemble_structured_text_keeps_line_breaks() -> None:

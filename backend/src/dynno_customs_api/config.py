@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     ocr_output_dir: Path = OCR_OUTPUT_DIR
     database_url: str = f"sqlite+pysqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
     database_echo: bool = False
+    auth_token_ttl_hours: int = 168
+    auth_open_registration: bool = True
     tesseract_cmd: Path | str = DEFAULT_TESSERACT_CMD
     ocr_provider: str = "tesseract"
     ocr_langs: str = "eng+rus"

@@ -31,13 +31,14 @@ def _fake_invoice_ocr_data(image, lang, output_type):
     }
 
 
-def test_validation_run_endpoint_orchestrates_full_pipeline(monkeypatch) -> None:
+def test_validation_run_endpoint_orchestrates_full_pipeline(monkeypatch, auth_headers: dict[str, str]) -> None:
     monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", _fake_invoice_ocr_data)
     client = TestClient(app)
 
     response = client.post(
         "/api/validation-runs",
         files=[("files", ("invoice.png", _png_bytes(), "image/png"))],
+        headers=auth_headers,
     )
 
     assert response.status_code == 200
@@ -50,12 +51,12 @@ def test_validation_run_endpoint_orchestrates_full_pipeline(monkeypatch) -> None
     assert body["grouped_results"]["failed"]
     assert document_pack_store.get(UUID(body["pack_id"])).status == body["status"]
 
-    latest_response = client.get(f"/api/validation-runs/{body['pack_id']}")
+    latest_response = client.get(f"/api/validation-runs/{body['pack_id']}", headers=auth_headers)
 
     assert latest_response.status_code == 200
     assert latest_response.json()["run_id"] == body["run_id"]
 
-    history_response = client.get("/api/validation-runs")
+    history_response = client.get("/api/validation-runs", headers=auth_headers)
 
     assert history_response.status_code == 200
     history_body = history_response.json()
@@ -64,27 +65,28 @@ def test_validation_run_endpoint_orchestrates_full_pipeline(monkeypatch) -> None
     assert history_body["items"][0]["file_names"] == ["invoice.png"]
 
 
-def test_validation_run_latest_endpoint_returns_404_for_missing_pack() -> None:
+def test_validation_run_latest_endpoint_returns_404_for_missing_pack(auth_headers: dict[str, str]) -> None:
     client = TestClient(app)
 
-    response = client.get("/api/validation-runs/00000000-0000-0000-0000-000000000000")
+    response = client.get("/api/validation-runs/00000000-0000-0000-0000-000000000000", headers=auth_headers)
 
     assert response.status_code == 404
 
 
-def test_validation_report_endpoint_uses_shared_workflow(monkeypatch) -> None:
+def test_validation_report_endpoint_uses_shared_workflow(monkeypatch, auth_headers: dict[str, str]) -> None:
     monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", _fake_invoice_ocr_data)
     client = TestClient(app)
 
     pack_response = client.post(
         "/api/document-packs",
         files=[("files", ("invoice.png", _png_bytes(), "image/png"))],
+        headers=auth_headers,
     )
 
     assert pack_response.status_code == 200
     pack_id = pack_response.json()["pack_id"]
 
-    response = client.post(f"/api/validation/reports/{pack_id}")
+    response = client.post(f"/api/validation/reports/{pack_id}", headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -92,3 +94,11 @@ def test_validation_report_endpoint_uses_shared_workflow(monkeypatch) -> None:
     assert body["summary"]["total_rules"] == 27
     assert validation_report_store.get_latest(UUID(pack_id)) is not None
     assert document_pack_store.get(UUID(pack_id)).status in {"failed", "validated", "needs_review"}
+
+
+def test_validation_run_routes_require_auth() -> None:
+    client = TestClient(app)
+
+    response = client.get("/api/validation-runs")
+
+    assert response.status_code == 401

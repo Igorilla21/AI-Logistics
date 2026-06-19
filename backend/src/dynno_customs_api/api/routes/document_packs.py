@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
+from dynno_customs_api.api.dependencies import CurrentAuthSession
 from dynno_customs_api.models.api import (
     DocumentPackCreatedResponse,
     DocumentPackListResponse,
@@ -119,18 +120,21 @@ def _to_ocr_response(result: OcrDocumentResultRecord) -> OcrDocumentResultRespon
 
 
 @router.post("", response_model=DocumentPackCreatedResponse)
-async def create_document_pack(files: list[UploadFile] | None = File(default=None)) -> DocumentPackCreatedResponse:
+async def create_document_pack(
+    _auth_session: CurrentAuthSession,
+    files: list[UploadFile] | None = File(default=None),
+) -> DocumentPackCreatedResponse:
     pack = await create_document_pack_record(files or [])
     return _to_response(pack)
 
 
 @router.get("", response_model=DocumentPackListResponse)
-async def get_document_pack_list() -> DocumentPackListResponse:
+async def get_document_pack_list(_auth_session: CurrentAuthSession) -> DocumentPackListResponse:
     return DocumentPackListResponse(items=[_to_response(pack) for pack in list_document_packs()])
 
 
 @router.get("/{pack_id}", response_model=DocumentPackCreatedResponse)
-async def get_document_pack_by_id(pack_id: UUID) -> DocumentPackCreatedResponse:
+async def get_document_pack_by_id(pack_id: UUID, _auth_session: CurrentAuthSession) -> DocumentPackCreatedResponse:
     pack = get_document_pack(pack_id)
     if pack is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")
@@ -138,7 +142,7 @@ async def get_document_pack_by_id(pack_id: UUID) -> DocumentPackCreatedResponse:
 
 
 @router.post("/{pack_id}/ocr", response_model=OcrDocumentListResponse)
-async def run_ocr_for_pack(pack_id: UUID) -> OcrDocumentListResponse:
+async def run_ocr_for_pack(pack_id: UUID, _auth_session: CurrentAuthSession) -> OcrDocumentListResponse:
     pack = run_ocr_for_document_pack(pack_id)
     if pack is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")
@@ -149,7 +153,7 @@ async def run_ocr_for_pack(pack_id: UUID) -> OcrDocumentListResponse:
 
 
 @router.get("/{pack_id}/ocr-results", response_model=OcrDocumentListResponse)
-async def get_ocr_results(pack_id: UUID) -> OcrDocumentListResponse:
+async def get_ocr_results(pack_id: UUID, _auth_session: CurrentAuthSession) -> OcrDocumentListResponse:
     items = list_ocr_results(pack_id)
     if items is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")
@@ -160,7 +164,7 @@ async def get_ocr_results(pack_id: UUID) -> OcrDocumentListResponse:
 
 
 @router.post("/{pack_id}/normalize", response_model=NormalizedDocumentListResponse)
-async def normalize_pack(pack_id: UUID) -> NormalizedDocumentListResponse:
+async def normalize_pack(pack_id: UUID, _auth_session: CurrentAuthSession) -> NormalizedDocumentListResponse:
     pack = normalize_document_pack(pack_id)
     if pack is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")
@@ -171,7 +175,7 @@ async def normalize_pack(pack_id: UUID) -> NormalizedDocumentListResponse:
 
 
 @router.get("/{pack_id}/normalized-documents", response_model=NormalizedDocumentListResponse)
-async def get_normalized_documents(pack_id: UUID) -> NormalizedDocumentListResponse:
+async def get_normalized_documents(pack_id: UUID, _auth_session: CurrentAuthSession) -> NormalizedDocumentListResponse:
     items = list_normalized_documents(pack_id)
     if items is None:
         raise HTTPException(status_code=404, detail="Document pack not found.")

@@ -31,6 +31,24 @@ IMAGE_CONTENT_TYPES = {
 }
 PDF_CONTENT_TYPES = {"application/pdf"}
 IMAGE_SUFFIXES = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
+OCR_ORIENTATION_RETRY_DEGREES = (180, 90, 270)
+OCR_SIGNAL_WORDS = (
+    "addendum",
+    "analysis",
+    "batch",
+    "bill",
+    "certificate",
+    "commercial",
+    "container",
+    "date",
+    "expiry",
+    "invoice",
+    "lot",
+    "manufacture",
+    "manufacturing",
+    "packing",
+    "production",
+)
 
 
 class TesseractOcrProvider:
@@ -146,6 +164,18 @@ def _extract_embedded_pdf_text(source_path: Path, content_type: str) -> str:
 
 
 def _ocr_image(*, page_no: int, image: Image.Image) -> OcrPageResultRecord:
+    original = _ocr_image_once(page_no=page_no, image=image, rotation_degrees=0)
+    if not _needs_orientation_retry(original):
+        return original
+
+    candidates = [original]
+    for rotation_degrees in OCR_ORIENTATION_RETRY_DEGREES:
+        rotated_image = image.rotate(rotation_degrees, expand=True)
+        candidates.append(_ocr_image_once(page_no=page_no, image=rotated_image, rotation_degrees=rotation_degrees))
+    return max(candidates, key=_ocr_quality_key)
+
+
+def _ocr_image_once(*, page_no: int, image: Image.Image, rotation_degrees: int) -> OcrPageResultRecord:
     data = pytesseract.image_to_data(
         image,
         lang=settings.ocr_langs,
@@ -153,6 +183,8 @@ def _ocr_image(*, page_no: int, image: Image.Image) -> OcrPageResultRecord:
     )
     lines = _extract_line_records(page_no=page_no, data=data)
     text = "\n".join(line.text for line in lines)
+    word_count = sum(1 for raw_word in data.get("text", []) if str(raw_word).strip())
+    signal_count = _ocr_signal_count(text)
     return OcrPageResultRecord(
         page_no=page_no,
         text=text,
@@ -161,9 +193,34 @@ def _ocr_image(*, page_no: int, image: Image.Image) -> OcrPageResultRecord:
         image_height=image.height,
         lines=lines,
         provider_metadata={
-            "word_count": sum(1 for raw_word in data.get("text", []) if str(raw_word).strip()),
+            "word_count": word_count,
+            "rotation_degrees": rotation_degrees,
+            "signal_word_count": signal_count,
         },
     )
+
+
+def _needs_orientation_retry(page: OcrPageResultRecord) -> bool:
+    word_count = int(page.provider_metadata.get("word_count", 0))
+    signal_count = int(page.provider_metadata.get("signal_word_count", 0))
+    confidence = page.confidence or 0.0
+    if word_count < 8:
+        return True
+    if confidence < 0.72:
+        return True
+    return word_count >= 40 and signal_count == 0 and confidence < 0.82
+
+
+def _ocr_quality_key(page: OcrPageResultRecord) -> tuple[int, float, int]:
+    word_count = int(page.provider_metadata.get("word_count", 0))
+    signal_count = int(page.provider_metadata.get("signal_word_count", 0))
+    confidence = page.confidence or 0.0
+    return signal_count, confidence, word_count
+
+
+def _ocr_signal_count(text: str) -> int:
+    normalized = text.lower()
+    return sum(1 for word in OCR_SIGNAL_WORDS if word in normalized)
 
 
 def _assemble_structured_text(data: dict[str, list[Any]]) -> str:

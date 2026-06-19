@@ -10,22 +10,31 @@ import {
 } from "react";
 
 import {
+  ApiError,
+  AuthBootstrapStatusResponse,
+  AuthUser,
   createValidationRun,
+  fetchAuthBootstrapStatus,
+  fetchCurrentUser,
   fetchValidationRun,
   fetchValidationRuns,
   fetchHealth,
   fetchSchemaIndex,
   HealthResponse,
+  loginAuth,
   NormalizedDocument,
   NormalizedField,
   NormalizedFieldValue,
   NormalizedLineItem,
+  logoutAuth,
+  registerAuth,
   ValidationResult,
   ValidationRunResponse,
   ValidationRunSummary,
 } from "./lib/api";
 
 type StageStatus = "ok" | "check" | "warning" | "missing" | "problem";
+type AuthMode = "login" | "register";
 type IconName =
   | "shield"
   | "home"
@@ -64,6 +73,7 @@ type ShipmentStage = {
   footerLabel: string;
   hint: string;
   icon: IconName;
+  informationalResults: ValidationResult[];
   issueCount: number;
   message: string;
   results: ValidationResult[];
@@ -72,6 +82,7 @@ type ShipmentStage = {
   step: number;
   totalRules: number;
   triggeredCount: number;
+  visibleResults: ValidationResult[];
 };
 
 type ShipmentMeta = {
@@ -104,9 +115,35 @@ type ExtractionFieldView = {
   structured: boolean;
 };
 
+const EXTRACTION_FIELD_PRIORITY: Record<string, number> = {
+  seller_name: 100,
+  buyer_name: 99,
+  manufacturer_name: 98,
+  shipper_name: 97,
+  contract_no: 96,
+  contract_date: 95,
+  addendum_no: 94,
+  addendum_date: 93,
+  invoice_no: 92,
+  invoice_date: 91,
+  incoterms: 90,
+  payment_terms: 89,
+  total_amount: 88,
+  container_no: 87,
+  gross_weight_kg: 86,
+  net_weight_kg: 85,
+  packages_quantity: 84,
+};
+
 type ExtractionLineItemView = {
   fields: ExtractionFieldView[];
   label: string;
+};
+
+type ShipmentNotice = {
+  id: string;
+  body: string;
+  title: string;
 };
 
 const NAV_ITEMS: Array<{ icon: IconName; label: string; badge?: string; active?: boolean }> = [
@@ -128,6 +165,60 @@ const STAGE_DEFINITIONS: Array<{ documentTypes: string[]; icon: IconName; id: st
   { id: "bill-of-lading", label: "Bill of Lading", icon: "bill", documentTypes: ["bl", "bill_of_lading", "hbl", "mbl"] },
   { id: "payment-confirmation", label: "Payment Confirmation", icon: "payment", documentTypes: ["payment_confirmation"] },
 ];
+
+const CONTRACT_OPTIONAL_SKIP_RULES = new Set(["R003", "R005"]);
+const INCOTERMS_INFORMATIONAL_SKIP_RULES = new Set(["R006"]);
+const REDUNDANT_COA_SKIP_RULES = new Set(["R023"]);
+const BL_PACKING_INFORMATIONAL_SKIP_RULES = new Set(["R025", "R026"]);
+const PAYMENT_OPTIONAL_WARNING_RULES = new Set(["R018"]);
+const AUTH_TOKEN_STORAGE_KEY = "dynno_customs_auth_token";
+
+function getStoredAuthToken(): string | null {
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+function setStoredAuthToken(token: string) {
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+}
+
+function clearStoredAuthToken() {
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+function getUserInitials(user: AuthUser | null): string {
+  if (!user) {
+    return "SA";
+  }
+
+  const parts = user.full_name
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "SA";
+  }
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function formatUserRole(role: string): string {
+  return role === "admin" ? "Workspace admin" : role === "operator" ? "Customs operator" : formatFieldLabel(role);
+}
+
+function getDefaultAuthMode(bootstrap: AuthBootstrapStatusResponse | null): AuthMode {
+  if (!bootstrap) {
+    return "login";
+  }
+  return bootstrap.has_users ? "login" : "register";
+}
 
 function AppIcon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconName }) {
   const common = {
@@ -508,6 +599,10 @@ function buildExtractionFieldView(key: string, value: NormalizedFieldValue): Ext
   };
 }
 
+function getExtractionFieldPriority(key: string): number {
+  return EXTRACTION_FIELD_PRIORITY[key] ?? 0;
+}
+
 function buildLineItemLabel(item: NormalizedLineItem, index: number): string {
   const lineNoValue = isRecord(item) ? item.line_no : null;
   const resolvedLineNo =
@@ -587,6 +682,65 @@ function matchesStageDocument(stageDocumentTypes: string[], value: string): bool
   return stageDocumentTypes.includes(normalizedValue);
 }
 
+function hasDocumentType(run: ValidationRunResponse, documentType: string): boolean {
+  return run.documents.some((item) => normalizeDocType(item.document_type) === documentType);
+}
+
+function isContractInformationalSkip(run: ValidationRunResponse, result: ValidationResult): boolean {
+  return result.status === "skipped" && !hasDocumentType(run, "contract") && CONTRACT_OPTIONAL_SKIP_RULES.has(result.rule_code);
+}
+
+function isPaymentInformationalWarning(run: ValidationRunResponse, result: ValidationResult): boolean {
+  return (
+    result.status === "failed" &&
+    result.severity === "warning" &&
+    !hasDocumentType(run, "payment_confirmation") &&
+    PAYMENT_OPTIONAL_WARNING_RULES.has(result.rule_code)
+  );
+}
+
+function isIncotermsInformationalSkip(result: ValidationResult): boolean {
+  return result.status === "skipped" && INCOTERMS_INFORMATIONAL_SKIP_RULES.has(result.rule_code);
+}
+
+function isRedundantCoaInformationalSkip(result: ValidationResult): boolean {
+  return result.status === "skipped" && REDUNDANT_COA_SKIP_RULES.has(result.rule_code);
+}
+
+function isBlPackingInformationalSkip(result: ValidationResult): boolean {
+  return result.status === "skipped" && BL_PACKING_INFORMATIONAL_SKIP_RULES.has(result.rule_code);
+}
+
+function isInformationalShipmentResult(run: ValidationRunResponse, result: ValidationResult): boolean {
+  return (
+    isContractInformationalSkip(run, result) ||
+    isPaymentInformationalWarning(run, result) ||
+    isIncotermsInformationalSkip(result) ||
+    isRedundantCoaInformationalSkip(result) ||
+    isBlPackingInformationalSkip(result)
+  );
+}
+
+function isInformationalOnlyStage(stage: ShipmentStage): boolean {
+  return stage.visibleResults.length === 0 && stage.informationalResults.length > 0;
+}
+
+function isOptionalPaymentConfirmationStage(stage: ShipmentStage): boolean {
+  return stage.id === "payment-confirmation" && !stage.document && isInformationalOnlyStage(stage);
+}
+
+function isContractInformationalStage(stage: ShipmentStage): boolean {
+  return stage.informationalResults.some((item) => CONTRACT_OPTIONAL_SKIP_RULES.has(item.rule_code));
+}
+
+function isIncotermsInformationalStage(stage: ShipmentStage): boolean {
+  return stage.informationalResults.some((item) => INCOTERMS_INFORMATIONAL_SKIP_RULES.has(item.rule_code));
+}
+
+function isBlPackingInformationalStage(stage: ShipmentStage): boolean {
+  return stage.informationalResults.some((item) => BL_PACKING_INFORMATIONAL_SKIP_RULES.has(item.rule_code));
+}
+
 function buildStage(run: ValidationRunResponse, stageDefinition: (typeof STAGE_DEFINITIONS)[number], step: number): ShipmentStage {
   const document =
     run.documents.find((item) => matchesStageDocument(stageDefinition.documentTypes, item.document_type)) ?? null;
@@ -595,36 +749,53 @@ function buildStage(run: ValidationRunResponse, stageDefinition: (typeof STAGE_D
     item.documents.some((documentType) => matchesStageDocument(stageDefinition.documentTypes, documentType)),
   );
   const nonPassedResults = results.filter((item) => item.status !== "passed");
-  const hasErrorFailure = nonPassedResults.some((item) => item.status === "failed" && item.severity === "error");
-  const hasWarningFailure = nonPassedResults.some((item) => item.status === "failed" && item.severity === "warning");
-  const hasNeedsReview = nonPassedResults.some((item) => item.status === "needs_review");
-  const hasSkipped = nonPassedResults.some((item) => item.status === "skipped");
+  const informationalResults = nonPassedResults.filter((item) => isInformationalShipmentResult(run, item));
+  const visibleResults = nonPassedResults.filter((item) => !isInformationalShipmentResult(run, item));
+  const actionableResults = visibleResults.filter((item) => item.status !== "skipped");
+  const skippedCount = visibleResults.length - actionableResults.length;
+  const warningFailures = actionableResults.filter((item) => item.status === "failed" && item.severity === "warning");
+  const hasErrorFailure = actionableResults.some((item) => item.status === "failed" && item.severity === "error");
+  const hasNeedsReview = actionableResults.some((item) => item.status === "needs_review");
+  const informationalOnly = visibleResults.length === 0 && informationalResults.length > 0;
 
   let status: StageStatus;
   if (!document) {
     status = "missing";
   } else if (hasErrorFailure) {
     status = "problem";
-  } else if (hasWarningFailure && nonPassedResults.length > 1) {
+  } else if (warningFailures.length > 1 || (warningFailures.length === 1 && skippedCount === 0 && actionableResults.length === 1)) {
     status = "warning";
-  } else if (hasWarningFailure || hasNeedsReview || hasSkipped) {
+  } else if (actionableResults.length > 0 || hasNeedsReview || skippedCount > 0) {
     status = "check";
   } else {
     status = "ok";
   }
 
-  const issueCount = nonPassedResults.length;
+  const issueCount = actionableResults.length;
   const messageByStatus: Record<StageStatus, string> = {
-    check: issueCount === 1 ? "1 issue to review" : `${issueCount} issues to review`,
+    check:
+      issueCount > 0
+        ? issueCount === 1
+          ? "1 issue to review"
+          : `${issueCount} issues to review`
+        : skippedCount === 1
+          ? "1 check skipped"
+          : `${skippedCount} checks skipped`,
     missing: "Document not uploaded",
     ok: "All key checks passed",
     problem: issueCount === 1 ? "1 blocking issue found" : `${issueCount} blocking issues found`,
     warning: issueCount === 1 ? "1 issue found" : `${issueCount} issues found`,
   };
 
+  const message =
+    status === "missing" && informationalOnly && stageDefinition.id === "payment-confirmation"
+      ? "Optional upload"
+      : messageByStatus[status];
   const hint = document
     ? `${document.source_file_name} · ${Object.keys(document.fields ?? {}).length} extracted fields`
-    : "Validation chain cannot continue without this document";
+    : status === "missing" && informationalOnly && stageDefinition.id === "payment-confirmation"
+      ? "Upload if available to complete prepayment evidence for this shipment"
+      : "Validation chain cannot continue without this document";
 
   return {
     id: stageDefinition.id,
@@ -634,8 +805,9 @@ function buildStage(run: ValidationRunResponse, stageDefinition: (typeof STAGE_D
     footerLabel: results.length === 1 ? "1 rule evaluated" : `${results.length} rules evaluated`,
     hint,
     icon: stageDefinition.icon,
+    informationalResults,
     issueCount,
-    message: messageByStatus[status],
+    message,
     results,
     searchText: [
       stageDefinition.label,
@@ -649,16 +821,20 @@ function buildStage(run: ValidationRunResponse, stageDefinition: (typeof STAGE_D
     step,
     totalRules: results.length,
     triggeredCount: results.length,
+    visibleResults,
   };
 }
 
 function getDefaultStageId(stages: ShipmentStage[]): string | null {
+  const primaryStages = stages.filter((stage) => !isOptionalPaymentConfirmationStage(stage));
+  const orderedStages = primaryStages.length > 0 ? primaryStages : stages;
+
   return (
-    stages.find((stage) => stage.status === "problem")?.id ??
-    stages.find((stage) => stage.status === "warning")?.id ??
-    stages.find((stage) => stage.status === "check")?.id ??
-    stages.find((stage) => stage.status === "missing")?.id ??
-    stages[0]?.id ??
+    orderedStages.find((stage) => stage.status === "problem")?.id ??
+    orderedStages.find((stage) => stage.status === "warning")?.id ??
+    orderedStages.find((stage) => stage.status === "check")?.id ??
+    orderedStages.find((stage) => stage.status === "missing")?.id ??
+    orderedStages[0]?.id ??
     null
   );
 }
@@ -706,12 +882,22 @@ function getRunStatusLabel(status: string): string {
 }
 
 function getStageRecommendedAction(stage: ShipmentStage): string {
+  if (isOptionalPaymentConfirmationStage(stage)) {
+    return "Upload the payment confirmation if it is available. The shipment can still be reviewed without this proof-of-payment file.";
+  }
+
   if (stage.status === "missing") {
     return `Upload the ${stage.label.toLowerCase()} to continue the validation chain.`;
   }
 
-  const topIssue = stage.results.find((item) => item.status !== "passed");
+  const topIssue = stage.visibleResults[0];
   if (!topIssue) {
+    if (isContractInformationalStage(stage)) {
+      return "No document-level action is needed here. Contract-dependent checks were skipped because the master contract file is not included in this pack.";
+    }
+    if (isIncotermsInformationalStage(stage)) {
+      return "No document-level action is needed here. Incoterms comparison was skipped because the required addendum/invoice pair was not fully extracted.";
+    }
     return "Continue to the next document or export the current report.";
   }
 
@@ -726,12 +912,68 @@ function getStageRecommendedAction(stage: ShipmentStage): string {
   return `Review ${topIssue.rule_code} with the source snippet and confirm the final document values.`;
 }
 
+function buildShipmentNotices(run: ValidationRunResponse | null): ShipmentNotice[] {
+  if (!run) {
+    return [];
+  }
+
+  const notices: ShipmentNotice[] = [];
+  const contractSkips = run.report.results.filter((item) => isContractInformationalSkip(run, item));
+  if (contractSkips.length > 0) {
+    const ruleCodes = contractSkips.map((item) => item.rule_code).join(", ");
+    notices.push({
+      id: "contract-missing",
+      title: "Contract file is not included in this pack",
+      body: `Contract-dependent checks were skipped (${ruleCodes}). Addendum and invoice values were extracted successfully, but they were not compared against a separate master contract.`,
+    });
+  }
+
+  const paymentWarnings = run.report.results.filter((item) => isPaymentInformationalWarning(run, item));
+  if (paymentWarnings.length > 0) {
+    notices.push({
+      id: "payment-confirmation-missing",
+      title: "Payment confirmation is not uploaded",
+      body: "The shipment can still be reviewed without this file. Upload the payment confirmation later if you want to attach proof of prepayment for the broker or audit trail.",
+    });
+  }
+
+  const incotermsSkips = run.report.results.filter((item) => isIncotermsInformationalSkip(item));
+  if (incotermsSkips.length > 0) {
+    notices.push({
+      id: "incoterms-partial",
+      title: "Incoterms comparison was skipped",
+      body: "Incoterms are required in addendum and invoice. Optional documents stay green when this field is absent, and cross-document comparison resumes once both required values are extracted.",
+    });
+  }
+
+  const blPackingSkips = run.report.results.filter((item) => isBlPackingInformationalSkip(item));
+  if (blPackingSkips.length > 0) {
+    const ruleCodes = blPackingSkips.map((item) => item.rule_code).join(", ");
+    notices.push({
+      id: "bl-packing-partial",
+      title: "BL and packing-list comparison is partial",
+      body: `Some BL vs packing-list checks were skipped (${ruleCodes}) because package quantity or container number was not extracted from both documents. Actual mismatches will still appear as document issues when both values are available.`,
+    });
+  }
+
+  return notices;
+}
+
 function buildActivityTimeline(stages: ShipmentStage[], run: ValidationRunResponse | null): ActivityItem[] {
   const timestamp = run?.updated_at ?? run?.created_at ?? null;
 
   return stages
     .filter((stage) => stage.document || stage.status === "missing")
     .map<ActivityItem>((stage) => {
+      if (isOptionalPaymentConfirmationStage(stage)) {
+        return {
+          actor: "System",
+          message: `${stage.label} not uploaded yet (optional)`,
+          timestamp,
+          tone: "neutral",
+        };
+      }
+
       if (stage.status === "missing") {
         return {
           actor: "System",
@@ -868,13 +1110,22 @@ function WorkspaceStatePanel({
 }
 
 export default function App() {
+  const [authBootstrap, setAuthBootstrap] = useState<AuthBootstrapStatusResponse | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authFullName, setAuthFullName] = useState("");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authToken, setAuthToken] = useState<string | null>(() => getStoredAuthToken());
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [history, setHistory] = useState<ValidationRunSummary[]>([]);
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isOpeningRun, setIsOpeningRun] = useState(false);
+  const [isSessionRestoring, setIsSessionRestoring] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [run, setRun] = useState<ValidationRunResponse | null>(null);
   const [schemas, setSchemas] = useState<string[]>([]);
@@ -887,45 +1138,87 @@ export default function App() {
   useEffect(() => {
     let active = true;
 
-    async function loadInitialState() {
+    async function bootstrapWorkspace() {
       setIsInitialLoading(true);
+      setIsSessionRestoring(true);
       try {
-        const [healthResponse, schemaResponse] = await Promise.all([fetchHealth(), fetchSchemaIndex()]);
+        const [healthResponse, schemaResponse, bootstrapResponse] = await Promise.all([
+          fetchHealth(),
+          fetchSchemaIndex(),
+          fetchAuthBootstrapStatus(),
+        ]);
         if (!active) {
           return;
         }
         setHealth(healthResponse);
         setSchemas(schemaResponse.schemas);
+        setAuthBootstrap(bootstrapResponse);
+        setAuthMode(getDefaultAuthMode(bootstrapResponse));
+
+        if (!authToken) {
+          setAuthUser(null);
+          return;
+        }
+
+        const currentUser = await fetchCurrentUser(authToken);
+        if (!active) {
+          return;
+        }
+        setAuthUser(currentUser);
       } catch (err) {
+        if (active && isApiError(err) && err.status === 401) {
+          clearStoredAuthToken();
+          setAuthToken(null);
+          setAuthUser(null);
+          setError("Session expired. Sign in again.");
+          return;
+        }
         if (active) {
           setError(err instanceof Error ? err.message : "Unable to connect to API.");
         }
       } finally {
         if (active) {
           setIsInitialLoading(false);
+          setIsSessionRestoring(false);
         }
       }
     }
 
-    void loadInitialState();
+    void bootstrapWorkspace();
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [authToken]);
 
   useEffect(() => {
     let active = true;
 
     async function loadHistory() {
+      if (!authToken || !authUser) {
+        setHistory([]);
+        setRun(null);
+        setIsHistoryLoading(false);
+        return;
+      }
+
       setIsHistoryLoading(true);
       try {
-        const response = await fetchValidationRuns();
+        const response = await fetchValidationRuns(authToken);
         if (!active) {
           return;
         }
         setHistory(response.items);
       } catch (err) {
+        if (active && isApiError(err) && err.status === 401) {
+          clearStoredAuthToken();
+          setAuthToken(null);
+          setAuthUser(null);
+          setHistory([]);
+          setRun(null);
+          setError("Session expired. Sign in again.");
+          return;
+        }
         if (active) {
           setError(err instanceof Error ? err.message : "Unable to load shipment history.");
         }
@@ -941,7 +1234,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [authToken, authUser]);
 
   useEffect(() => {
     if (!run && history.length > 0) {
@@ -981,13 +1274,14 @@ export default function App() {
   const shipmentMeta = useMemo(() => buildShipmentMeta(run), [run]);
 
   const stageSummary = useMemo(() => {
-    const okCount = allStages.filter((stage) => stage.status === "ok").length;
-    const reviewCount = allStages.filter((stage) => stage.status === "check" || stage.status === "warning").length;
-    const missingCount = allStages.filter((stage) => stage.status === "missing").length;
-    const problemCount = allStages.filter((stage) => stage.status === "problem").length;
+    const summaryStages = allStages.filter((stage) => !isOptionalPaymentConfirmationStage(stage));
+    const okCount = summaryStages.filter((stage) => stage.status === "ok").length;
+    const reviewCount = summaryStages.filter((stage) => stage.status === "check" || stage.status === "warning").length;
+    const missingCount = summaryStages.filter((stage) => stage.status === "missing").length;
+    const problemCount = summaryStages.filter((stage) => stage.status === "problem").length;
     const documentCount = allStages.filter((stage) => stage.document).length;
     const progressPercent =
-      allStages.length > 0 ? Math.round(((okCount + reviewCount * 0.5) / allStages.length) * 100) : 0;
+      summaryStages.length > 0 ? Math.round(((okCount + reviewCount * 0.5) / summaryStages.length) * 100) : 0;
 
     return {
       documentCount,
@@ -1000,7 +1294,7 @@ export default function App() {
   }, [allStages]);
 
   const visibleAlerts = useMemo(() => {
-    const alerts = run?.report.results.filter((item) => item.status !== "passed") ?? [];
+    const alerts = run?.report.results.filter((item) => item.status !== "passed" && !isInformationalShipmentResult(run, item)) ?? [];
     if (!deferredSearchQuery) {
       return alerts.slice(0, 4);
     }
@@ -1011,25 +1305,137 @@ export default function App() {
   }, [deferredSearchQuery, run]);
 
   const activityTimeline = useMemo(() => buildActivityTimeline(allStages, run), [allStages, run]);
+  const shipmentNotices = useMemo(() => buildShipmentNotices(run), [run]);
 
+  const actionableStages = allStages.filter((stage) => !isOptionalPaymentConfirmationStage(stage));
   const nextActionStage =
-    allStages.find((stage) => stage.status === "problem") ??
-    allStages.find((stage) => stage.status === "warning") ??
-    allStages.find((stage) => stage.status === "check") ??
-    allStages.find((stage) => stage.status === "missing") ??
+    actionableStages.find((stage) => stage.status === "problem") ??
+    actionableStages.find((stage) => stage.status === "warning") ??
+    actionableStages.find((stage) => stage.status === "check") ??
+    actionableStages.find((stage) => stage.status === "missing") ??
+    actionableStages[0] ??
     allStages[0] ??
     null;
 
   const selectedBytes = useMemo(() => files.reduce((total, file) => total + file.size, 0), [files]);
-  const isWorkspaceBooting = isInitialLoading || isHistoryLoading || isOpeningRun;
-  const showEmptyStartState = !run && !isWorkspaceBooting && !isSubmitting;
+  const isAuthenticated = Boolean(authToken && authUser);
+  const isWorkspaceBooting = isInitialLoading || isSessionRestoring || (isAuthenticated && (isHistoryLoading || isOpeningRun));
+  const showAuthGate = !isWorkspaceBooting && !isAuthenticated;
+  const showEmptyStartState = isAuthenticated && !run && !isWorkspaceBooting && !isSubmitting;
+  const isBootstrapSetup = Boolean(authBootstrap && !authBootstrap.has_users);
+  const isOpenSelfRegistration = Boolean(authBootstrap?.registration_open && authBootstrap.has_users);
+  const authStatusLabel = isAuthenticated
+    ? `${schemas.length} schemas loaded`
+    : isBootstrapSetup
+      ? "Bootstrap access open"
+      : authBootstrap?.registration_open
+        ? "Self-registration available"
+        : "Sign in required";
+  const authProfileLabel = authUser
+    ? formatUserRole(authUser.role)
+    : isBootstrapSetup
+      ? "Bootstrap admin setup"
+      : authBootstrap?.registration_open
+        ? "Sign in or self-register"
+        : "Sign in required";
+  const authAccessLabel = isBootstrapSetup
+    ? "Bootstrap admin setup"
+    : authBootstrap?.registration_open
+      ? "Sign in or self-register"
+      : "Authenticated operators only";
+  const authAsideTitle = isBootstrapSetup
+    ? "Create the first admin account"
+    : authBootstrap?.registration_open
+      ? "Sign in or create an account"
+      : "Sign in to continue";
+  const authAsideCopy = isBootstrapSetup
+    ? "The first account becomes the workspace admin and opens the internal validation pipeline on the project SQL database."
+    : authBootstrap?.registration_open
+      ? "Validation runs, document packs, OCR, and history are protected. Existing users can sign in, and new users can create an operator account for this internal workspace."
+      : "Validation runs, document packs, OCR, and history are now available only after authentication.";
+  const authRegistrationNote = isBootstrapSetup
+    ? "Bootstrap window is open"
+    : authBootstrap?.registration_open
+      ? "Open self-registration is enabled"
+      : "Open self-registration is disabled";
+  const authFormEyebrow = authMode === "register" ? (isBootstrapSetup ? "Bootstrap admin" : "Create operator account") : "Secure sign in";
+  const authFormTitle = authMode === "register" ? (isBootstrapSetup ? "Set up internal access" : "Create workspace access") : "Authenticate operator session";
+  const authFormCopy = authMode === "register"
+    ? isBootstrapSetup
+      ? "Create the first internal admin for this workspace. After that, sign-in remains available and open self-registration can stay enabled or be closed by configuration."
+      : "Create a new account for this internal workspace. Additional self-registered users are created as operators."
+    : "Use the email and password stored in the local SQL-backed auth layer.";
+  const authSubmitLabel = isAuthSubmitting
+    ? "Authenticating..."
+    : authMode === "register"
+      ? isBootstrapSetup
+        ? "Create admin account"
+        : "Create operator account"
+      : "Sign in";
 
   function handleClearSearch() {
     setSearchQuery("");
   }
 
+  function resetAuthForm(nextMode: AuthMode) {
+    setAuthMode(nextMode);
+    setAuthEmail("");
+    setAuthPassword("");
+    setAuthFullName("");
+  }
+
+  function handleSessionExpired(message = "Session expired. Sign in again.") {
+    clearStoredAuthToken();
+    setAuthToken(null);
+    setAuthUser(null);
+    setHistory([]);
+    setRun(null);
+    setFiles([]);
+    setActiveStageId(null);
+    setError(message);
+    resetAuthForm(getDefaultAuthMode(authBootstrap));
+  }
+
   function handleRetryBootstrap() {
     window.location.reload();
+  }
+
+  async function handleAuthSubmit() {
+    setIsAuthSubmitting(true);
+    setError(null);
+
+    try {
+      const response =
+        authMode === "register"
+          ? await registerAuth({
+              email: authEmail,
+              password: authPassword,
+              full_name: authFullName,
+            })
+          : await loginAuth({
+              email: authEmail,
+              password: authPassword,
+            });
+
+      let nextBootstrap = authBootstrap;
+      try {
+        nextBootstrap = await fetchAuthBootstrapStatus();
+      } catch {
+        // Keep the signed-in session even if the post-auth status refresh fails.
+      }
+
+      setStoredAuthToken(response.access_token);
+      setAuthToken(response.access_token);
+      setAuthUser(response.user);
+      if (nextBootstrap) {
+        setAuthBootstrap(nextBootstrap);
+      }
+      resetAuthForm(getDefaultAuthMode(nextBootstrap));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to complete authentication.");
+    } finally {
+      setIsAuthSubmitting(false);
+    }
   }
 
   const activeFieldEntries = useMemo(
@@ -1037,7 +1443,17 @@ export default function App() {
       Object.entries(activeStage?.document?.fields ?? {})
         .filter(([, value]) => hasMeaningfulValue(value))
         .map(([key, value]) => buildExtractionFieldView(key, value))
-        .sort((left, right) => Number(right.structured) - Number(left.structured)),
+        .sort((left, right) => {
+          const structuredDelta = Number(right.structured) - Number(left.structured);
+          if (structuredDelta !== 0) {
+            return structuredDelta;
+          }
+          const priorityDelta = getExtractionFieldPriority(right.key) - getExtractionFieldPriority(left.key);
+          if (priorityDelta !== 0) {
+            return priorityDelta;
+          }
+          return left.label.localeCompare(right.label);
+        }),
     [activeStage],
   );
   const activeLineItemEntries = useMemo(
@@ -1046,7 +1462,17 @@ export default function App() {
         fields: Object.entries(item)
           .filter(([key, value]) => key !== "line_no" && hasMeaningfulValue(value))
           .map(([key, value]) => buildExtractionFieldView(key, value))
-          .sort((left, right) => Number(right.structured) - Number(left.structured)),
+          .sort((left, right) => {
+            const structuredDelta = Number(right.structured) - Number(left.structured);
+            if (structuredDelta !== 0) {
+              return structuredDelta;
+            }
+            const priorityDelta = getExtractionFieldPriority(right.key) - getExtractionFieldPriority(left.key);
+            if (priorityDelta !== 0) {
+              return priorityDelta;
+            }
+            return left.label.localeCompare(right.label);
+          }),
         label: buildLineItemLabel(item, index),
       }))
       .filter((item) => item.fields.length > 0),
@@ -1060,14 +1486,23 @@ export default function App() {
   }
 
   async function handleOpenRun(packId: string) {
+    if (!authToken) {
+      handleSessionExpired();
+      return;
+    }
+
     setError(null);
     setIsOpeningRun(true);
     try {
-      const response = await fetchValidationRun(packId);
+      const response = await fetchValidationRun(packId, authToken);
       setRun(response);
       const stages = STAGE_DEFINITIONS.map((stageDefinition, index) => buildStage(response, stageDefinition, index + 1));
       setActiveStageId(getDefaultStageId(stages));
     } catch (err) {
+      if (isApiError(err) && err.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       setError(err instanceof Error ? err.message : "Unable to open shipment.");
     } finally {
       setIsOpeningRun(false);
@@ -1075,6 +1510,11 @@ export default function App() {
   }
 
   async function handleRunValidation() {
+    if (!authToken) {
+      handleSessionExpired();
+      return;
+    }
+
     if (files.length === 0) {
       setError("Select shipment documents before starting validation.");
       return;
@@ -1084,17 +1524,36 @@ export default function App() {
     setError(null);
 
     try {
-      const response = await createValidationRun(files);
+      const response = await createValidationRun(files, authToken);
       setRun(response);
       setFiles([]);
       const stages = STAGE_DEFINITIONS.map((stageDefinition, index) => buildStage(response, stageDefinition, index + 1));
       setActiveStageId(getDefaultStageId(stages));
-      const historyResponse = await fetchValidationRuns();
+      const historyResponse = await fetchValidationRuns(authToken);
       setHistory(historyResponse.items);
     } catch (err) {
+      if (isApiError(err) && err.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       setError(err instanceof Error ? err.message : "Validation run failed.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleLogout() {
+    const token = authToken;
+    setError(null);
+
+    try {
+      if (token) {
+        await logoutAuth(token);
+      }
+    } catch {
+      // Even if the session is already invalid, we still clear the client state.
+    } finally {
+      handleSessionExpired("Signed out.");
     }
   }
 
@@ -1124,7 +1583,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
-  const pageTitle = run ? formatShipmentCode(run.pack_id) : "Shipment workspace";
+  const pageTitle = showAuthGate ? "Secure access" : run ? formatShipmentCode(run.pack_id) : "Shipment workspace";
 
   return (
     <div className="layout-shell">
@@ -1169,7 +1628,7 @@ export default function App() {
             <span className={health ? "status-dot status-dot--online" : "status-dot"} />
             <span>{health ? `${health.status} · v${health.version}` : "API offline"}</span>
           </div>
-          <span>{schemas.length} schemas loaded</span>
+          <span>{authStatusLabel}</span>
         </div>
       </aside>
 
@@ -1186,13 +1645,14 @@ export default function App() {
               <AppIcon name="search" className="app-icon app-icon--muted" />
               <input
                 type="search"
+                disabled={!isAuthenticated}
                 value={searchQuery}
                 onChange={(event) =>
                   startTransition(() => {
                     setSearchQuery(event.target.value);
                   })
                 }
-                placeholder="Search shipments, documents, rules..."
+                placeholder={isAuthenticated ? "Search shipments, documents, rules..." : "Sign in to search workspace data"}
               />
               <span className="searchbar__hint">⌘K</span>
             </label>
@@ -1206,68 +1666,103 @@ export default function App() {
             </button>
 
             <div className="profile-chip">
-              <span className="profile-chip__avatar">AK</span>
+              <span className="profile-chip__avatar">{getUserInitials(authUser)}</span>
               <span>
-                <strong>Alex Kim</strong>
-                <small>Customs Dept.</small>
+                <strong>{authUser?.full_name ?? "Secure access"}</strong>
+                <small>{authProfileLabel}</small>
               </span>
             </div>
+            {isAuthenticated ? (
+              <button className="ghost-button ghost-button--compact" type="button" onClick={() => void handleLogout()}>
+                <span>Log out</span>
+              </button>
+            ) : null}
           </div>
         </header>
 
         <section className="page-header">
           <div className="page-header__copy">
             <div className="page-header__title-row">
-              <h1>{run ? `Shipment ${formatShipmentCode(run.pack_id)}` : "Validation workspace"}</h1>
-              <span className={`run-pill run-pill--${run?.status ?? "draft"}`}>
-                {run ? getRunStatusLabel(run.status) : "Draft"}
+              <h1>{showAuthGate ? "Internal access" : run ? `Shipment ${formatShipmentCode(run.pack_id)}` : "Validation workspace"}</h1>
+              <span className={`run-pill run-pill--${showAuthGate ? "needs_review" : run?.status ?? "draft"}`}>
+                {showAuthGate ? "Secure" : run ? getRunStatusLabel(run.status) : "Draft"}
               </span>
             </div>
 
             <div className="meta-strip">
-              <span>
-                <strong>Exporter:</strong> {shipmentMeta.exporter}
-              </span>
-              <span>
-                <strong>Importer:</strong> {shipmentMeta.importer}
-              </span>
-              <span>
-                <strong>Route:</strong> {shipmentMeta.route}
-              </span>
-              <span>
-                <strong>Incoterms:</strong> {shipmentMeta.incoterms}
-              </span>
-              <span className="meta-pill">{shipmentMeta.mode}</span>
+              {showAuthGate ? (
+                <>
+                  <span>
+                    <strong>Mode:</strong> Internal workspace
+                  </span>
+                  <span>
+                    <strong>Access:</strong> {authAccessLabel}
+                  </span>
+                  <span>
+                    <strong>API:</strong> {health ? "Online" : "Offline"}
+                  </span>
+                  <span className="meta-pill">{isBootstrapSetup ? "Bootstrap" : authBootstrap?.registration_open ? "Open registration" : "Protected"}</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    <strong>Exporter:</strong> {shipmentMeta.exporter}
+                  </span>
+                  <span>
+                    <strong>Importer:</strong> {shipmentMeta.importer}
+                  </span>
+                  <span>
+                    <strong>Route:</strong> {shipmentMeta.route}
+                  </span>
+                  <span>
+                    <strong>Incoterms:</strong> {shipmentMeta.incoterms}
+                  </span>
+                  <span className="meta-pill">{shipmentMeta.mode}</span>
+                </>
+              )}
             </div>
           </div>
 
           <div className="page-header__actions">
-            <div className="button-row">
-              <button className="ghost-button" type="button" onClick={handleShare} disabled={!run}>
-                <AppIcon name="share" className="app-icon" />
-                <span>Share</span>
-              </button>
-              <button className="ghost-button" type="button" onClick={handleExport} disabled={!run}>
-                <AppIcon name="export" className="app-icon" />
-                <span>Export</span>
-              </button>
-              <button className="primary-button primary-button--inline" type="button" onClick={() => fileInputRef.current?.click()}>
-                <AppIcon name="upload" className="app-icon" />
-                <span>Select Docs</span>
-              </button>
-              <button
-                className="primary-button primary-button--dark primary-button--inline"
-                type="button"
-                onClick={() => void handleRunValidation()}
-                disabled={isSubmitting || files.length === 0}
-              >
-                <AppIcon name="refresh" className="app-icon" />
-                <span>{isSubmitting ? "Running..." : "Run Validation"}</span>
-              </button>
-            </div>
+            {showAuthGate ? (
+              <div className="button-row">
+                {!health ? (
+                  <button className="ghost-button" type="button" onClick={handleRetryBootstrap}>
+                    <AppIcon name="refresh" className="app-icon" />
+                    <span>Retry connection</span>
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="button-row">
+                <button className="ghost-button" type="button" onClick={handleShare} disabled={!run}>
+                  <AppIcon name="share" className="app-icon" />
+                  <span>Share</span>
+                </button>
+                <button className="ghost-button" type="button" onClick={handleExport} disabled={!run}>
+                  <AppIcon name="export" className="app-icon" />
+                  <span>Export</span>
+                </button>
+                <button className="primary-button primary-button--inline" type="button" onClick={() => fileInputRef.current?.click()}>
+                  <AppIcon name="upload" className="app-icon" />
+                  <span>Select Docs</span>
+                </button>
+                <button
+                  className="primary-button primary-button--dark primary-button--inline"
+                  type="button"
+                  onClick={() => void handleRunValidation()}
+                  disabled={isSubmitting || files.length === 0}
+                >
+                  <AppIcon name="refresh" className="app-icon" />
+                  <span>{isSubmitting ? "Running..." : "Run Validation"}</span>
+                </button>
+              </div>
+            )}
 
             <div className="page-header__timestamp">
-              <span>Last updated: {run ? formatTime(run.updated_at) : "Not yet run"}</span>
+              <span>
+                Last updated: {showAuthGate ? (authUser?.last_login_at ? formatTime(authUser.last_login_at) : "Awaiting sign-in") : run ? formatTime(run.updated_at) : "Not yet run"}
+              </span>
             </div>
           </div>
         </section>
@@ -1281,7 +1776,7 @@ export default function App() {
           onChange={handleFilesChange}
         />
 
-        {files.length > 0 ? (
+        {isAuthenticated && files.length > 0 ? (
           <section className="upload-tray">
             <div>
               <strong>{files.length} files staged</strong>
@@ -1302,6 +1797,104 @@ export default function App() {
 
         {error ? <div className="error-banner">{error}</div> : null}
 
+        {showAuthGate ? (
+          <section className="auth-panel">
+            <div className="auth-panel__grid">
+              <article className="auth-panel__aside">
+                <span className="section-eyebrow">Protected internal workspace</span>
+                <h2>{authAsideTitle}</h2>
+                <p>{authAsideCopy}</p>
+                <div className="auth-panel__notes">
+                  <span>{health ? `API online · v${health.version}` : "API offline"}</span>
+                  <span>{schemas.length} schemas available</span>
+                  <span>{authRegistrationNote}</span>
+                </div>
+              </article>
+
+              <form
+                className="auth-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleAuthSubmit();
+                }}
+              >
+                <span className="section-eyebrow">{authFormEyebrow}</span>
+                <h2>{authFormTitle}</h2>
+                <p>{authFormCopy}</p>
+
+                {isOpenSelfRegistration ? (
+                  <div className="auth-form__mode-switch" role="tablist" aria-label="Authentication mode">
+                    <button
+                      className={`auth-form__mode-button ${authMode === "login" ? "auth-form__mode-button--active" : ""}`}
+                      type="button"
+                      onClick={() => resetAuthForm("login")}
+                    >
+                      Sign in
+                    </button>
+                    <button
+                      className={`auth-form__mode-button ${authMode === "register" ? "auth-form__mode-button--active" : ""}`}
+                      type="button"
+                      onClick={() => resetAuthForm("register")}
+                    >
+                      Create account
+                    </button>
+                  </div>
+                ) : null}
+
+                {authMode === "register" ? (
+                  <label className="auth-form__field">
+                    <span>Full name</span>
+                    <input
+                      type="text"
+                      value={authFullName}
+                      onChange={(event) => setAuthFullName(event.target.value)}
+                      placeholder="Admin User"
+                      autoComplete="name"
+                    />
+                  </label>
+                ) : null}
+
+                <label className="auth-form__field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    placeholder="admin@example.com"
+                    autoComplete="email"
+                  />
+                </label>
+
+                <label className="auth-form__field">
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    placeholder="Enter password"
+                    autoComplete={authMode === "register" ? "new-password" : "current-password"}
+                  />
+                </label>
+
+                <div className="button-row">
+                  <button
+                    className="primary-button primary-button--dark"
+                    type="submit"
+                    disabled={
+                      isAuthSubmitting ||
+                      !authEmail.trim() ||
+                      !authPassword.trim() ||
+                      (authMode === "register" && !authFullName.trim())
+                    }
+                  >
+                    <span>{authSubmitLabel}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+        ) : (
+          <>
         {isSubmitting ? (
           <WorkspaceStatePanel
             icon="refresh"
@@ -1310,6 +1903,8 @@ export default function App() {
             message={`OCR, extraction, and rule checks are running for ${files.length} staged ${files.length === 1 ? "document" : "documents"}.`}
           />
         ) : null}
+          </>
+        )}
 
         {isWorkspaceBooting && !run && !isSubmitting ? (
           <WorkspaceStatePanel
@@ -1435,11 +2030,9 @@ export default function App() {
                     <span className={`stage-tag stage-tag--${activeStage.status}`}>{getStageToneLabel(activeStage.status)}</span>
                   </div>
 
-                  {activeStage.results.filter((item) => item.status !== "passed").length > 0 ? (
+                  {activeStage.visibleResults.length > 0 ? (
                     <div className="issue-stack">
-                      {activeStage.results
-                        .filter((item) => item.status !== "passed")
-                        .map((item) => (
+                      {activeStage.visibleResults.map((item) => (
                           <div key={`${activeStage.id}-${item.rule_code}`} className="issue-row">
                             <div className={`issue-row__icon issue-row__icon--${item.status === "failed" ? item.severity : item.status}`}>
                               <AppIcon
@@ -1471,7 +2064,17 @@ export default function App() {
                   ) : (
                     <div className="detail-empty">
                       <strong>No active issues</strong>
-                      <span>All key checks passed for this document.</span>
+                      <span>
+                        {isContractInformationalStage(activeStage)
+                          ? "All document-level checks passed. Contract-dependent checks were skipped at the shipment level."
+                          : isIncotermsInformationalStage(activeStage)
+                            ? "All document-level checks passed. Incoterms comparison was skipped because the required addendum/invoice pair is incomplete."
+                          : isBlPackingInformationalStage(activeStage)
+                            ? "All document-level checks passed. BL and packing-list comparison will resume when package quantity and container number are available in both documents."
+                          : isOptionalPaymentConfirmationStage(activeStage)
+                            ? "Core document checks passed. Payment confirmation can be uploaded later as optional proof of prepayment."
+                          : "All key checks passed for this document."}
+                      </span>
                     </div>
                   )}
 
@@ -1618,13 +2221,27 @@ export default function App() {
                     </>
                   ) : (
                     <div className="detail-empty">
-                      <strong>Document missing</strong>
-                      <span>Upload this file to unlock extraction and rule evaluation for the current step.</span>
+                      <strong>{isOptionalPaymentConfirmationStage(activeStage) ? "Optional document not uploaded" : "Document missing"}</strong>
+                      <span>
+                        {isOptionalPaymentConfirmationStage(activeStage)
+                          ? "Upload this file later if you want to attach proof of payment. The rest of the shipment review can proceed without it."
+                          : "Upload this file to unlock extraction and rule evaluation for the current step."}
+                      </span>
                     </div>
                   )}
                 </article>
               </section>
             ) : null}
+
+            {shipmentNotices.length > 0
+              ? shipmentNotices.map((notice) => (
+                  <section key={notice.id} className="shipment-notice">
+                    <span className="section-eyebrow">Pack note</span>
+                    <strong>{notice.title}</strong>
+                    <p>{notice.body}</p>
+                  </section>
+                ))
+              : null}
 
             <section className="footer-grid">
               <article className="footer-card">

@@ -5,6 +5,7 @@ from dynno_customs_api.models.domain import (
     NormalizedDocumentFieldsRecord,
     NormalizedDocumentMetadataRecord,
     NormalizedDocumentRecord,
+    OcrDocumentResultRecord,
     StringFieldRecord,
 )
 from dynno_customs_api.services.document_classifier import classify_document
@@ -19,12 +20,15 @@ def build_normalized_document_stub(
     content_type: str,
     sha256: str,
     raw_text_ref: str | None = None,
+    ocr_result: OcrDocumentResultRecord | None = None,
     pages: int = 1,
     ocr_provider: str = "stub",
 ) -> NormalizedDocumentRecord:
     raw_text = read_raw_text(raw_text_ref)
+    if raw_text is None and ocr_result is not None:
+        raw_text = ocr_result.raw_text or None
     classified = classify_document(file_name, content_type, raw_text)
-    fields, line_items = extract_fields(classified.document_type, raw_text)
+    fields, line_items = extract_fields(classified.document_type, raw_text, ocr_result=ocr_result)
     evidence = [
         EvidenceRecord(
             document_type=classified.document_type,

@@ -1,8 +1,10 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from dynno_customs_api.models.domain import UserRole
 
 
 class UploadedDocument(BaseModel):
@@ -210,3 +212,48 @@ class ValidationRunListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ValidationRunSummaryResponse]
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: UUID
+    email: str
+    full_name: str
+    role: UserRole
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    last_login_at: datetime | None = None
+
+
+class AuthRegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=256)
+    full_name: str = Field(min_length=2, max_length=255)
+    role: UserRole | None = None
+
+
+class AuthLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=256)
+
+
+class AuthTokenResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_at: datetime
+    user: UserResponse
+
+
+class AuthBootstrapStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    has_users: bool
+    registration_open: bool
