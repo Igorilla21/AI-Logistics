@@ -1,6 +1,6 @@
 # Production Readiness
 
-Last updated: 2026-06-19
+Last updated: 2026-06-20
 
 ## Target Release
 
@@ -23,11 +23,11 @@ Out of scope for this release:
 
 ## Current Validation Gate
 
-Verified on 2026-06-19:
+Verified on 2026-06-20:
 
 | Gate | Result |
 |---|---|
-| Backend tests | `96 passed in 9.30s` |
+| Backend tests | `98 passed in 9.18s` |
 | Frontend TypeScript build | Passed |
 | Frontend Vite production build | Passed, `assets/index-Bmb4VhyH.js` about `242.32 kB` before gzip |
 
@@ -39,7 +39,7 @@ Fresh sample-pack runs on the current code:
 | Paini 07 | `.tmp/validation_run_paini_07_20260611_baseline.json` | `needs_review` | `27 total`, `19 passed`, `0 failed`, `2 warnings`, `0 needs_review`, `6 skipped` | Usable after UI cleanup; visible action is mainly COA expiry warning. |
 | tianrun 57 | `.tmp/validation_run_tianrun_57_20260611_after_bl_gross_buyer_date_fix.json` | `validated` | `27 total`, `25 passed`, `0 failed`, `0 warnings`, `0 needs_review`, `2 skipped` | Production-pilot baseline after BL gross-weight/date extraction and legal-form normalization fixes; only separate-contract comparisons remain skipped. |
 | Denkim 03 | `.tmp/validation_run_denkim_03_20260618_current.json` | `validated` | `27 total`, `22 passed`, `0 failed`, `0 warnings`, `0 needs_review`, `5 skipped` | Now a usable narrow-pilot baseline. COA rotation/OCR reads batch and production date on current code; remaining skips are informational pack gaps rather than hard failures. |
-| Hugestone 1 | `.tmp/validation_run_hugestone_1_20260619_policy.json` | `failed` | `27 total`, `21 passed`, `2 failed`, `2 warnings`, `0 needs_review`, `2 skipped` | Extraction is much stronger, and the remaining failure is intentional: draft/incomplete BL signals no BL date and missing container number, while missing separate contract stays informational. |
+| Hugestone 1 | `.tmp/validation_run_hugestone_1_20260620_r017_policy.json` | `failed` | `27 total`, `21 passed`, `3 failed`, `1 warning`, `0 needs_review`, `2 skipped` | Extraction is much stronger, and the remaining failures are intentional: draft/incomplete BL, missing packing-list container number, and missing BL/packing container comparison. Missing separate contract stays informational; missing payment confirmation remains warning-level. |
 
 ## Production Blockers
 

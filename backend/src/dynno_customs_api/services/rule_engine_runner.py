@@ -1417,7 +1417,7 @@ def _rule_r017(context: RuleContext) -> ValidationResultRecord:
     return _presence_rule(
         context,
         rule_code="R017",
-        severity="warning",
+        severity="error",
         document_type="packing_list",
         field_name="container_no",
         pass_message="Packing list contains container number.",

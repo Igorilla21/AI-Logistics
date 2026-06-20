@@ -1,6 +1,6 @@
 # MVP Readiness Table
 
-Last updated: 2026-06-19
+Last updated: 2026-06-20
 
 Scope: validation-only internal pipeline. Cost calculator, logistics advisory, TN VED support, and LLM assistance are outside the current MVP gate.
 
@@ -17,7 +17,7 @@ Scope: validation-only internal pipeline. Cost calculator, logistics advisory, T
 | Sample pack | Source | Run response | Workflow status | Rule summary | Current read |
 |---|---|---|---|---|---|
 | Denkim 03 | `тестовые доки/Denkim 03` | `.tmp/validation_run_denkim_03_20260618_current.json` | `validated` | `27 total`, `22 passed`, `0 failed`, `0 warnings`, `0 needs_review`, `5 skipped` | Current narrow-pilot baseline. COA rotation/OCR now recovers batch and production date; remaining skips are informational contract/incoterms/buyer gaps plus `R014` when empty package tare is absent but palletized reconciliation still works. |
-| Hugestone 1 | `тестовые доки/Hugestone 1` | `.tmp/validation_run_hugestone_1_20260619_policy.json` | `failed` | `27 total`, `21 passed`, `2 failed`, `2 warnings`, `0 needs_review`, `2 skipped` | Extraction is now mostly usable, but the pack correctly fails because the BL appears draft/incomplete: no BL date and no container number for BL/packing comparison. Missing separate contract stays an informational skip. |
+| Hugestone 1 | `тестовые доки/Hugestone 1` | `.tmp/validation_run_hugestone_1_20260620_r017_policy.json` | `failed` | `27 total`, `21 passed`, `3 failed`, `1 warning`, `0 needs_review`, `2 skipped` | Extraction is now mostly usable, but the pack correctly fails because the BL appears draft/incomplete and the container number is absent from the packing/BL checks. Missing separate contract stays an informational skip, and missing payment confirmation remains a warning. |
 
 ## Aierfuke 05 Document Readiness
 

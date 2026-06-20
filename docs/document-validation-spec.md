@@ -396,12 +396,12 @@
 
 ### R017. Packing list must contain container number
 
-- Severity: `warning`
+- Severity: `error`
 - Type: `presence`
 - Source fields:
   - `packing_list.container_no`
 - Logic:
-  Поле желательно.
+  Поле обязательно для контейнерной поставки.
 
 ### R018. Prepayment requires payment confirmation
 
@@ -599,7 +599,7 @@ Policy:
 2. Как именно сравнивать `product names` между invoice, packing list и addendum: строгое равенство, словарь синонимов или fuzzy match?
 3. Какие допустимы отклонения по весу и суммам: `0`, `0.01`, `0.1`, `1 кг`?
 4. Всегда ли `buyer_name` в BL соответствует buyer, а не consignee/notified party?
-5. Обязателен ли `container_no` для всех видов поставок или только для контейнерных?
+5. Как автоматически определять исключения из обязательности `container_no` для не-контейнерных сценариев?
 6. Нужно ли проверять `Certificate of Origin` и `Transport Invoice` отдельными правилами уже в v1, или пока только хранить и классифицировать их?
 
 ## 13. Рекомендуемый следующий артефакт

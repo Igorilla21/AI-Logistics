@@ -44,10 +44,14 @@ Do not use informational `skipped` when the missing value is critical for a fina
 
 Current examples:
 
-- `R017`: packing list container number is a visible warning when absent.
+- `R017`: packing list container number is critical for containerized shipments and is an `error` when absent.
 - `R019` and `R020`: COA batch number and manufacture date are critical and must fail when absent.
 - `R022`: if a BL document exists and COA manufacture date exists, missing `bl_date` is an `error` because the BL may be draft or incomplete.
 - `R026`: if BL and packing list are present, missing container number in either document is an `error`.
+
+Current non-blocking warning example:
+
+- `R018`: missing payment confirmation remains a warning when prepayment terms require it, because the shipment can still be reviewed while the proof-of-payment file is requested.
 
 ## UI Policy
 

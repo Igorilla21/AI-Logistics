@@ -540,6 +540,37 @@ def test_rule_r006_skips_when_only_one_required_incoterms_value_is_available() -
     assert "only one required document" in result.message
 
 
+def test_rule_r017_fails_with_error_when_packing_container_number_is_missing() -> None:
+    report = run_rule_engine(_pack([_document("packing_list", NormalizedDocumentFieldsRecord())]))
+
+    result = _result_by_code(report, "R017")
+
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert result.message == "Packing list container number is missing."
+    assert result.observed_values == {"packing_list.container_no": None}
+
+
+def test_rule_r017_passes_when_packing_container_number_is_present() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        container_no=_string("MSKU1234567"),
+                    ),
+                )
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R017")
+
+    assert result.status == "passed"
+    assert result.severity == "error"
+
+
 def test_rule_r025_skipped_message_explains_partial_bl_packing_package_extraction() -> None:
     report = run_rule_engine(
         _pack(
