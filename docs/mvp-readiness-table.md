@@ -1,6 +1,6 @@
 # MVP Readiness Table
 
-Last updated: 2026-06-11
+Last updated: 2026-06-19
 
 Scope: validation-only internal pipeline. Cost calculator, logistics advisory, TN VED support, and LLM assistance are outside the current MVP gate.
 
@@ -17,7 +17,7 @@ Scope: validation-only internal pipeline. Cost calculator, logistics advisory, T
 | Sample pack | Source | Run response | Workflow status | Rule summary | Current read |
 |---|---|---|---|---|---|
 | Denkim 03 | `тестовые доки/Denkim 03` | `.tmp/validation_run_denkim_03_20260618_current.json` | `validated` | `27 total`, `22 passed`, `0 failed`, `0 warnings`, `0 needs_review`, `5 skipped` | Current narrow-pilot baseline. COA rotation/OCR now recovers batch and production date; remaining skips are informational contract/incoterms/buyer gaps plus `R014` when empty package tare is absent but palletized reconciliation still works. |
-| Hugestone 1 | `тестовые доки/Hugestone 1` | `.tmp/validation_run_hugestone_1_20260611.json` | `failed` | `27 total`, `8 passed`, `2 failed`, `3 warnings`, `0 needs_review`, `14 skipped` | Better addendum coverage than Denkim, but BL/COA/packing extraction is weak. Main visible gaps include buyer mismatch, missing packing empty package/container fields, missing payment confirmation, and missing COA manufacture date. |
+| Hugestone 1 | `тестовые доки/Hugestone 1` | `.tmp/validation_run_hugestone_1_20260619_policy.json` | `failed` | `27 total`, `21 passed`, `2 failed`, `2 warnings`, `0 needs_review`, `2 skipped` | Extraction is now mostly usable, but the pack correctly fails because the BL appears draft/incomplete: no BL date and no container number for BL/packing comparison. Missing separate contract stays an informational skip. |
 
 ## Aierfuke 05 Document Readiness
 
@@ -59,7 +59,7 @@ Scope: validation-only internal pipeline. Cost calculator, logistics advisory, T
 | Packing and weight checks | `R010`, `R011`, `R014`, `R015`, `R016` | Passed | Derived packaging logic | For `DRUM + PALLETS`, use default drum tare `21 kg` and derive pallet tare from the remaining gross-minus-net weight. |
 | Payment confirmation | `R018` | Warning-level failed | Real document-pack or classification gap | Confirm whether payment confirmation is absent; if present under another filename, add classification/mapping. |
 | COA batch/date checks | `R019`, `R020`, `R021`, `R022`, `R023` | Batch/manufacture mostly fixed; expiry still warning/skipped | Real source-data gap plus one noisy COA label | Keep expiry as warning when manufacture exists; improve second COA analysis-date label later. |
-| BL cross-checks | `R024`, `R025`, `R026` | Gross-weight check fixed; package/container still skipped | BL table extraction gap | Improve BL package quantity and container-number extraction if source contains readable values. |
+| BL cross-checks | `R024`, `R025`, `R026` | Gross-weight check fixed; package quantity may still skip, while container gaps are strict when BL and packing list are present | BL table/source-data gap | Improve BL package quantity extraction if source contains readable values; missing container number is now a visible document issue. |
 
 ## tianrun 57 Snapshot
 
@@ -85,7 +85,7 @@ Scope: validation-only internal pipeline. Cost calculator, logistics advisory, T
 |---|---|---|---|
 | Intake and orchestration | Files upload through `POST /api/validation-runs`; OCR, normalization, validation, and latest-run storage complete synchronously. | Usable for internal MVP demos. | Worker/queue is not required for first internal validation, but will be needed before production load. |
 | OCR provider boundary | Current provider is Tesseract with embedded PDF text fallback and provider abstraction in place. | Ready for Google Document AI experiment. | Add provider adapter behind existing registry, then compare same sample packs side by side. |
-| Extraction | Aierfuke 05, Paini 07, tianrun 57, and Denkim 03 are usable for a narrow internal pilot on the current code. Hugestone 1 still exposes broader template coverage gaps. | Internal pilot can proceed with a narrow supported-template statement that includes Denkim 03. Public/production coverage is not ready. | Keep Denkim as a regression baseline, then triage Hugestone by BL/COA/packing fields. |
+| Extraction | Aierfuke 05, Paini 07, tianrun 57, and Denkim 03 are usable for a narrow internal pilot on the current code. Hugestone 1 now exposes real pack/document defects rather than broad extraction failure. | Internal pilot can proceed with a narrow supported-template statement that includes Denkim 03. Public/production coverage is not ready. | Keep Denkim as a regression baseline, and use Hugestone as the strict BL/container policy check. |
 | Rule engine | Core rule runner handles `R001` through `R027`; current failures on new packs look mostly extraction/source-data driven rather than missing rule implementations. | Ready as a deterministic rule layer for supported templates, but release notes must distinguish real document issues from extraction gaps. | Add regression fixtures for each fixed supplier-template gap. |
 | Frontend review UI | Shipment workspace can display status, document cards, issues, extracted fields, and evidence. | Good enough for internal MVP walkthrough. | After more backend samples, add any missing issue labels or review states surfaced by real data. |
 
@@ -93,7 +93,7 @@ Scope: validation-only internal pipeline. Cost calculator, logistics advisory, T
 
 Recommended order:
 
-1. Triage Hugestone 1 BL/COA/packing extraction, because it is now the clearest weak-template sample in the verified set.
+1. Keep Hugestone 1 as a regression for strict BL/container policy: missing separate contract is informational, but missing BL date/container number is visible and strict.
 2. Decide whether the current Denkim-style `R014`/`R016` informational handling for source-missing tare is acceptable for the first pilot or needs explicit operator confirmation.
 3. Keep rerunning `Denkim 03` after extraction changes so the current validated state stays locked as a regression baseline.
 4. Run one pack likely to include payment confirmation or a complete COA expiry date, so `R018` and `R021` can be tested as true passes.

@@ -459,12 +459,59 @@ def test_rule_r003_and_r005_explain_missing_separate_contract_document() -> None
         )
     )
 
+    assert _result_by_code(report, "R003").status == "skipped"
     assert _result_by_code(report, "R003").message == (
         "Separate contract document is missing or unreadable, so addendum and invoice contract numbers cannot be matched to it."
     )
+    assert _result_by_code(report, "R005").status == "skipped"
     assert _result_by_code(report, "R005").message == (
         "Separate contract document date is missing, so the extracted addendum date cannot be compared to a contract date."
     )
+
+
+def test_rule_r022_fails_when_bl_date_missing_but_coa_manufacture_date_exists() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "coa",
+                    NormalizedDocumentFieldsRecord(
+                        manufacture_date=_date(date(2026, 5, 28)),
+                    ),
+                ),
+                _document("mbl", NormalizedDocumentFieldsRecord()),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R022")
+
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert "BL date is missing" in result.message
+    assert result.observed_values["coa.manufacture_date"] == date(2026, 5, 28)
+    assert result.expected_values == {"mbl.bl_date": "required for final BL date comparison"}
+
+
+def test_rule_r022_skips_when_coa_manufacture_date_missing() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document("coa", NormalizedDocumentFieldsRecord()),
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(
+                        bl_date=_date(date(2026, 6, 1)),
+                    ),
+                ),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R022")
+
+    assert result.status == "skipped"
+    assert result.message == "COA manufacture date or BL date is missing."
 
 
 def test_rule_r006_skips_when_only_one_required_incoterms_value_is_available() -> None:
@@ -514,7 +561,7 @@ def test_rule_r025_skipped_message_explains_partial_bl_packing_package_extractio
     assert "package quantity comparison was skipped" in result.message
 
 
-def test_rule_r026_skipped_message_explains_partial_bl_packing_container_extraction() -> None:
+def test_rule_r026_fails_when_bl_or_packing_container_number_is_missing() -> None:
     report = run_rule_engine(
         _pack(
             [
@@ -531,8 +578,41 @@ def test_rule_r026_skipped_message_explains_partial_bl_packing_container_extract
 
     result = _result_by_code(report, "R026")
 
-    assert result.status == "skipped"
-    assert "container number comparison was skipped" in result.message
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert "required container number is missing" in result.message
+    assert result.observed_values["mbl.container_no"] == "msku1234567"
+    assert result.expected_values == {
+        "mbl.container_no": "required",
+        "packing_list.container_no": "required",
+    }
+
+
+def test_rule_r026_fails_when_bl_and_packing_container_numbers_mismatch() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(
+                        container_no=_string("MSKU1234567"),
+                    ),
+                ),
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        container_no=_string("TCLU7654321"),
+                    ),
+                ),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R026")
+
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert result.message == "BL container number does not match packing list."
 
 
 def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status(auth_headers: dict[str, str]) -> None:

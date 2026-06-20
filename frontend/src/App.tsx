@@ -169,7 +169,7 @@ const STAGE_DEFINITIONS: Array<{ documentTypes: string[]; icon: IconName; id: st
 const CONTRACT_OPTIONAL_SKIP_RULES = new Set(["R003", "R005"]);
 const INCOTERMS_INFORMATIONAL_SKIP_RULES = new Set(["R006"]);
 const REDUNDANT_COA_SKIP_RULES = new Set(["R023"]);
-const BL_PACKING_INFORMATIONAL_SKIP_RULES = new Set(["R025", "R026"]);
+const BL_PACKING_INFORMATIONAL_SKIP_RULES = new Set(["R025"]);
 const PAYMENT_OPTIONAL_WARNING_RULES = new Set(["R018"]);
 const AUTH_TOKEN_STORAGE_KEY = "dynno_customs_auth_token";
 
@@ -952,7 +952,7 @@ function buildShipmentNotices(run: ValidationRunResponse | null): ShipmentNotice
     notices.push({
       id: "bl-packing-partial",
       title: "BL and packing-list comparison is partial",
-      body: `Some BL vs packing-list checks were skipped (${ruleCodes}) because package quantity or container number was not extracted from both documents. Actual mismatches will still appear as document issues when both values are available.`,
+      body: `Some BL vs packing-list checks were skipped (${ruleCodes}) because package quantity was not extracted from both documents. Container-number gaps remain visible document issues.`,
     });
   }
 
@@ -2070,7 +2070,7 @@ export default function App() {
                           : isIncotermsInformationalStage(activeStage)
                             ? "All document-level checks passed. Incoterms comparison was skipped because the required addendum/invoice pair is incomplete."
                           : isBlPackingInformationalStage(activeStage)
-                            ? "All document-level checks passed. BL and packing-list comparison will resume when package quantity and container number are available in both documents."
+                            ? "All document-level checks passed. BL and packing-list package comparison will resume when package quantity is available in both documents."
                           : isOptionalPaymentConfirmationStage(activeStage)
                             ? "Core document checks passed. Payment confirmation can be uploaded later as optional proof of prepayment."
                           : "All key checks passed for this document."}

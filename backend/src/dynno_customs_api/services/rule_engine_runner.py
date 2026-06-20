@@ -1551,6 +1551,27 @@ def _rule_r022(context: RuleContext) -> ValidationResultRecord:
             documents=["coa", "hbl", "mbl"],
             fields=["manufacture_date", "bl_date"],
         )
+
+    coa = context.doc("coa")
+    manufacture_date = _field_values(coa, "manufacture_date") if coa else []
+    bl_date = _field_values(bl, "bl_date")
+    values = [*manufacture_date, *bl_date]
+
+    if manufacture_date and not bl_date:
+        return _result(
+            context,
+            rule_code="R022",
+            severity="error",
+            status="failed",
+            message="BL date is missing while COA manufacture date is present; the Bill of Lading may be draft or incomplete.",
+            documents=["coa", bl.document_type],
+            fields=["manufacture_date", "bl_date"],
+            observed_values=_observed(values),
+            expected_values={f"{bl.document_type}.bl_date": "required for final BL date comparison"},
+            evidence=_evidence(values),
+            confidence=_confidence(values),
+        )
+
     return _date_compare_rule(
         context,
         rule_code="R022",
@@ -1718,6 +1739,33 @@ def _rule_r026(context: RuleContext) -> ValidationResultRecord:
             documents=["hbl", "mbl", "packing_list"],
             fields=["container_no"],
         )
+
+    packing_list = context.doc("packing_list")
+    bl_values = _field_values(bl, "container_no")
+    packing_values = _field_values(packing_list, "container_no") if packing_list else []
+    values = [*bl_values, *packing_values]
+
+    if packing_list is not None and (not bl_values or not packing_values):
+        return _result(
+            context,
+            rule_code="R026",
+            severity="error",
+            status="failed",
+            message="BL and packing list are present, but a required container number is missing from one or both documents.",
+            documents=[bl.document_type, "packing_list"],
+            fields=["container_no"],
+            observed_values=_observed(values) if values else {
+                f"{bl.document_type}.container_no": None,
+                "packing_list.container_no": None,
+            },
+            expected_values={
+                f"{bl.document_type}.container_no": "required",
+                "packing_list.container_no": "required",
+            },
+            evidence=_evidence(values),
+            confidence=_confidence(values),
+        )
+
     return _exact_match_rule(
         context,
         rule_code="R026",
