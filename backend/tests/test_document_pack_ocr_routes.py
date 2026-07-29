@@ -22,18 +22,19 @@ def _fake_image_to_data(image, lang, output_type):
     }
 
 
-def test_document_pack_ocr_endpoints(monkeypatch) -> None:
+def test_document_pack_ocr_endpoints(monkeypatch, auth_headers: dict[str, str]) -> None:
     monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", _fake_image_to_data)
     client = TestClient(app)
 
     create_response = client.post(
         "/api/document-packs",
         files=[("files", ("invoice.png", _png_bytes(), "image/png"))],
+        headers=auth_headers,
     )
     assert create_response.status_code == 200
     pack_id = create_response.json()["pack_id"]
 
-    ocr_response = client.post(f"/api/document-packs/{pack_id}/ocr")
+    ocr_response = client.post(f"/api/document-packs/{pack_id}/ocr", headers=auth_headers)
 
     assert ocr_response.status_code == 200
     ocr_body = ocr_response.json()
@@ -43,15 +44,18 @@ def test_document_pack_ocr_endpoints(monkeypatch) -> None:
     assert ocr_body["items"][0]["raw_text_ref"].startswith("storage")
     assert document_pack_store.get(UUID(pack_id)).status == "ocr_completed"
 
-    get_response = client.get(f"/api/document-packs/{pack_id}/ocr-results")
+    get_response = client.get(f"/api/document-packs/{pack_id}/ocr-results", headers=auth_headers)
 
     assert get_response.status_code == 200
     assert get_response.json()["items"][0]["raw_text"] == "Invoice INV-001"
 
 
-def test_document_pack_ocr_endpoint_returns_404_for_missing_pack() -> None:
+def test_document_pack_ocr_endpoint_returns_404_for_missing_pack(auth_headers: dict[str, str]) -> None:
     client = TestClient(app)
 
-    response = client.post("/api/document-packs/00000000-0000-0000-0000-000000000000/ocr")
+    response = client.post(
+        "/api/document-packs/00000000-0000-0000-0000-000000000000/ocr",
+        headers=auth_headers,
+    )
 
     assert response.status_code == 404

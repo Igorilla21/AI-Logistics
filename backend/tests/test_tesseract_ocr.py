@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import fitz
 from PIL import Image
 
 from dynno_customs_api.config import ROOT_DIR, settings
 from dynno_customs_api.models.domain import DocumentFileRecord
 from dynno_customs_api.services import tesseract_ocr
-from dynno_customs_api.services.tesseract_ocr import resolve_document_path, run_tesseract_ocr
+from dynno_customs_api.services.tesseract_ocr import TesseractOcrProvider, resolve_document_path, run_tesseract_ocr
 
 
 def _test_dir():
@@ -33,6 +34,29 @@ def fake_image_to_data(image, lang, output_type):
     return {
         "text": ["", "Invoice", "INV-001"],
         "conf": ["-1", "95", "85"],
+        "block_num": [0, 1, 1],
+        "par_num": [0, 1, 1],
+        "line_num": [0, 1, 2],
+    }
+
+
+def fake_rotated_image_to_data(image, lang, output_type):
+    assert lang == settings.ocr_langs
+    assert output_type == tesseract_ocr.pytesseract.Output.DICT
+    if image.height > image.width:
+        return {
+            "text": ["", "MATERIAL", "CERTIFICATE", "OF", "ANALYSIS", "Lot", "No", "1752/2018"],
+            "conf": ["-1", "94", "93", "92", "93", "91", "90", "90"],
+            "block_num": [0, 1, 1, 1, 1, 2, 2, 2],
+            "par_num": [0, 1, 1, 1, 1, 1, 1, 1],
+            "line_num": [0, 1, 1, 1, 1, 2, 2, 2],
+        }
+    return {
+        "text": ["", "ocr", "noise", "text", "without", "document", "signals", "bad"],
+        "conf": ["-1", "30", "32", "31", "29", "33", "30", "28"],
+        "block_num": [0, 1, 1, 1, 1, 1, 1, 1],
+        "par_num": [0, 1, 1, 1, 1, 1, 1, 1],
+        "line_num": [0, 1, 1, 1, 1, 1, 1, 1],
     }
 
 
@@ -46,11 +70,42 @@ def test_run_tesseract_ocr_for_image(monkeypatch) -> None:
 
     assert result.status == "completed"
     assert result.provider == "tesseract"
-    assert result.raw_text == "Invoice INV-001"
+    assert result.raw_text == "Invoice\nINV-001"
     assert len(result.pages) == 1
     assert result.pages[0].confidence == 0.9
+    assert result.pages[0].text == "Invoice\nINV-001"
     assert result.pages[0].image_width == 120
     assert result.pages[0].image_height == 60
+    assert len(result.pages[0].lines) == 2
+    assert result.pages[0].lines[0].text == "Invoice"
+    assert result.pages[0].lines[0].line_no == 1
+    assert result.pages[0].provider_metadata["word_count"] == 2
+    assert result.provider_metadata["page_count"] == 1
+    assert result.provider_metadata["embedded_text_appended"] is False
+
+
+def test_ocr_image_retries_rotations_when_initial_quality_is_low(monkeypatch) -> None:
+    monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", fake_rotated_image_to_data)
+
+    result = tesseract_ocr._ocr_image(page_no=1, image=Image.new("RGB", (160, 80), "white"))
+
+    assert result.confidence == 0.9186
+    assert result.text == "MATERIAL CERTIFICATE OF ANALYSIS\nLot No 1752/2018"
+    assert result.provider_metadata["rotation_degrees"] in {90, 270}
+    assert result.provider_metadata["signal_word_count"] == 3
+
+
+def test_assemble_structured_text_keeps_line_breaks() -> None:
+    text = tesseract_ocr._assemble_structured_text(
+        {
+            "text": ["COMMERCIAL", "INVOICE", "INV-001", "DATE", "APR.13,2026"],
+            "block_num": [1, 1, 1, 1, 1],
+            "par_num": [1, 1, 1, 1, 1],
+            "line_num": [1, 1, 2, 3, 3],
+        }
+    )
+
+    assert text == "COMMERCIAL INVOICE\nINV-001\nDATE APR.13,2026"
 
 
 def test_run_tesseract_ocr_fails_for_unsupported_file() -> None:
@@ -65,3 +120,34 @@ def test_run_tesseract_ocr_fails_for_unsupported_file() -> None:
 
 def test_resolve_document_path_uses_repo_root_for_relative_paths() -> None:
     assert resolve_document_path("uploads/sample/invoice.pdf") == ROOT_DIR / "uploads" / "sample" / "invoice.pdf"
+
+
+def test_run_tesseract_ocr_appends_embedded_pdf_text(monkeypatch) -> None:
+    pdf_path = _test_dir() / "ocr-embedded.pdf"
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), "GROSS WEIGHT KGS 22088")
+    document.save(pdf_path)
+    document.close()
+
+    monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", fake_image_to_data)
+
+    result = run_tesseract_ocr(_document(str(pdf_path.relative_to(ROOT_DIR)), "application/pdf"))
+
+    assert result.status == "completed"
+    assert "Invoice\nINV-001" in result.raw_text
+    assert "GROSS WEIGHT KGS 22088" in result.raw_text
+    assert result.provider_metadata["embedded_text_appended"] is True
+
+
+def test_tesseract_provider_calls_run_function(monkeypatch) -> None:
+    image_path = _test_dir() / "provider-test.png"
+    Image.new("RGB", (100, 40), "white").save(image_path)
+
+    monkeypatch.setattr(tesseract_ocr.pytesseract, "image_to_data", fake_image_to_data)
+
+    provider = TesseractOcrProvider()
+    result = provider.process_document(_document(str(image_path.relative_to(ROOT_DIR))))
+
+    assert provider.name == "tesseract"
+    assert result.status == "completed"

@@ -15,7 +15,7 @@ def normalize_document_pack(pack_id: UUID) -> DocumentPackRecord | None:
     ocr_results_by_document_id = {
         result.document_id: result
         for result in pack.ocr_results
-        if result.status == "completed" and result.raw_text_ref is not None
+        if result.status == "completed" and (result.raw_text_ref is not None or result.raw_text or any(page.lines for page in result.pages))
     }
 
     normalized_documents: list[NormalizedDocumentRecord] = [
@@ -28,6 +28,7 @@ def normalize_document_pack(pack_id: UUID) -> DocumentPackRecord | None:
             raw_text_ref=ocr_results_by_document_id[file.document_id].raw_text_ref
             if file.document_id in ocr_results_by_document_id
             else None,
+            ocr_result=ocr_results_by_document_id[file.document_id] if file.document_id in ocr_results_by_document_id else None,
             pages=len(ocr_results_by_document_id[file.document_id].pages)
             if file.document_id in ocr_results_by_document_id
             else 1,

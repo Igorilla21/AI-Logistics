@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from dynno_customs_api.main import app
 from dynno_customs_api.models.domain import (
+    BooleanFieldRecord,
     DateFieldRecord,
     DecimalFieldRecord,
     DocumentPackRecord,
@@ -15,7 +16,7 @@ from dynno_customs_api.models.domain import (
     StringFieldRecord,
 )
 from dynno_customs_api.services.document_pack_store import document_pack_store
-from dynno_customs_api.services.rule_engine_runner import run_rule_engine
+from dynno_customs_api.services.rule_engine_runner import _normalize_string, run_rule_engine
 
 
 def _string(value: str, confidence: float = 0.99) -> StringFieldRecord:
@@ -34,6 +35,10 @@ def _decimal(value: float, confidence: float = 0.99) -> DecimalFieldRecord:
 
 def _integer(value: int, confidence: float = 0.99) -> IntegerFieldRecord:
     return IntegerFieldRecord(value=value, confidence=confidence, page_no=1, text_snippet=str(value))
+
+
+def _boolean(value: bool, confidence: float = 0.99) -> BooleanFieldRecord:
+    return BooleanFieldRecord(value=value, confidence=confidence, page_no=1, text_snippet=str(value))
 
 
 def _date(value: date, confidence: float = 0.99) -> DateFieldRecord:
@@ -147,6 +152,43 @@ def test_rule_engine_checks_coa_and_bl_rules() -> None:
     assert _result_by_code(report, "R027").status == "failed"
 
 
+def test_rule_r025_accepts_bl_pallet_count_against_packing_pallet_quantity() -> None:
+    packing_list = _document(
+        "packing_list",
+        NormalizedDocumentFieldsRecord(
+            packages_quantity=_integer(720),
+            pallet_quantity=_integer(20),
+        ),
+    )
+    mbl = _document(
+        "mbl",
+        NormalizedDocumentFieldsRecord(
+            packages_quantity=_integer(20),
+        ),
+    )
+
+    report = run_rule_engine(_pack([packing_list, mbl]))
+    result = _result_by_code(report, "R025")
+
+    assert result.status == "passed"
+    assert result.message == "BL packages quantity matches packing list pallet quantity."
+
+
+def test_rule_r001_matches_turkish_company_abbreviations_by_core_tokens() -> None:
+    invoice = _document(
+        "invoice",
+        NormalizedDocumentFieldsRecord(shipper_name=_string("DENKIM DENIZLI KIMYA SAN.VE TIC.A.S")),
+    )
+    coa = _document(
+        "coa",
+        NormalizedDocumentFieldsRecord(manufacturer_name=_string("Denizli Kimya Sanayi ve Ticaret A.S")),
+    )
+
+    report = run_rule_engine(_pack([invoice, coa]))
+
+    assert _result_by_code(report, "R001").status == "passed"
+
+
 def test_product_matching_excludes_bl_cargo_description() -> None:
     invoice = _document(
         "invoice",
@@ -178,7 +220,433 @@ def test_product_matching_excludes_bl_cargo_description() -> None:
     assert _result_by_code(report, "R004").status == "passed"
 
 
-def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -> None:
+def test_rule_r015_uses_pallet_applicability_signal() -> None:
+    no_pallets_pack = _pack(
+        [
+            _document(
+                "packing_list",
+                NormalizedDocumentFieldsRecord(has_pallets=_boolean(False)),
+            )
+        ]
+    )
+
+    no_pallets_report = run_rule_engine(no_pallets_pack)
+
+    assert _result_by_code(no_pallets_report, "R015").status == "passed"
+
+    missing_details_pack = _pack(
+        [
+            _document(
+                "packing_list",
+                NormalizedDocumentFieldsRecord(has_pallets=_boolean(True)),
+            )
+        ]
+    )
+
+    missing_details_report = run_rule_engine(missing_details_pack)
+
+    assert _result_by_code(missing_details_report, "R015").status == "failed"
+
+
+def test_rule_r016_uses_non_pallet_formula_when_has_pallets_is_false() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        gross_weight_kg=_decimal(18144.0),
+                        net_weight_kg=_decimal(18000.0),
+                        empty_package_weight_kg=_decimal(0.2),
+                        items_quantity=_integer(720),
+                        package_type=_string("bags"),
+                        has_pallets=_boolean(False),
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R016").status == "passed"
+
+
+def test_rule_r016_requires_pallet_fields_when_has_pallets_is_true() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        gross_weight_kg=_decimal(18144.0),
+                        net_weight_kg=_decimal(18000.0),
+                        empty_package_weight_kg=_decimal(0.2),
+                        items_quantity=_integer(720),
+                        has_pallets=_boolean(True),
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R016").status == "skipped"
+
+
+def test_rules_r014_r016_accept_palletized_pack_without_separate_empty_bag_tare() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        gross_weight_kg=_decimal(18600.0),
+                        net_weight_kg=_decimal(18000.0),
+                        items_quantity=_integer(720),
+                        package_type=_string("bag"),
+                        has_pallets=_boolean(True),
+                        pallet_weight_kg=_decimal(30.0),
+                        pallet_quantity=_integer(20),
+                    ),
+                )
+            ]
+        )
+    )
+
+    r014 = _result_by_code(report, "R014")
+    r016 = _result_by_code(report, "R016")
+
+    assert r014.status == "skipped"
+    assert "does not state empty package tare separately" in r014.message
+    assert r016.status == "passed"
+    assert r016.expected_values["packing_list.gross_weight_kg"] == 18600.0
+
+
+def test_rule_r016_warns_when_non_pallet_packaging_has_large_gross_minus_net_delta() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        gross_weight_kg=_decimal(18350.0),
+                        net_weight_kg=_decimal(18000.0),
+                        empty_package_weight_kg=_decimal(0.2),
+                        items_quantity=_integer(720),
+                        package_type=_string("pkg"),
+                        has_pallets=_boolean(False),
+                    ),
+                )
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R016")
+
+    assert result.status == "failed"
+    assert result.severity == "warning"
+    assert result.observed_values["packing_list.gross_minus_net_weight_kg"] == 350.0
+    assert "pkg" in result.expected_values["package_types_to_check_for_pallets"]
+
+
+def test_rule_r001_tolerates_ocr_noise_in_company_names() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "addendum",
+                    NormalizedDocumentFieldsRecord(shipper_name=_string("HENAN AIERFUKE CHEMICALS CO., LTD")),
+                ),
+                _document(
+                    "invoice",
+                    NormalizedDocumentFieldsRecord(shipper_name=_string("HENAN ATERFUKE CHEMICALS CO., LTD")),
+                ),
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(shipper_name=_string("HENAN ATEBPOKE CHEMICALS CO.,LTD")),
+                ),
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R001").status == "passed"
+
+
+def test_rule_string_normalization_repairs_mixed_script_confusables() -> None:
+    normalized = _normalize_string("Heнan Мaterial Co., Ltd Soyuzoptнim Ltd")
+
+    assert normalized == "henan material co ltd soyuzoptnim ltd"
+
+
+def test_rule_string_normalization_ignores_company_legal_form_prefixes() -> None:
+    assert _normalize_string("OOO SOYUZOPTHIM LTD") == "soyuzopthim ltd"
+    assert _normalize_string("ООО SOYUZOPTHIM LTD") == "soyuzopthim ltd"
+    assert _normalize_string("LLC ESTMA") == "estma"
+
+
+def test_rule_r002_ignores_ooo_legal_form_prefix_for_buyer_names() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document("addendum", NormalizedDocumentFieldsRecord(buyer_name=_string("SOYUZOPTHIM LTD"))),
+                _document("invoice", NormalizedDocumentFieldsRecord(buyer_name=_string("OOO SOYUZOPTHIM LTD"))),
+                _document("mbl", NormalizedDocumentFieldsRecord(buyer_name=_string("SOYUZOPTHIM LTD"))),
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R002").status == "passed"
+
+
+def test_rule_r021_warns_when_expiry_date_is_missing_but_manufacture_date_exists() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "coa",
+                    NormalizedDocumentFieldsRecord(
+                        manufacture_date=_date(date(2026, 5, 28)),
+                    ),
+                )
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R021")
+
+    assert result.status == "failed"
+    assert result.severity == "warning"
+    assert result.observed_values["coa.manufacture_date"] == date(2026, 5, 28)
+
+
+def test_rule_r023_skips_quietly_when_coa_dates_are_incomplete() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "coa",
+                    NormalizedDocumentFieldsRecord(
+                        manufacture_date=_date(date(2026, 5, 28)),
+                    ),
+                )
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R023")
+
+    assert result.status == "skipped"
+    assert "comparison was skipped" in result.message
+    assert result.observed_values["coa.manufacture_date"] == date(2026, 5, 28)
+
+
+def test_rule_r003_and_r005_explain_missing_separate_contract_document() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "addendum",
+                    NormalizedDocumentFieldsRecord(
+                        contract_no=_string("SPNM-SOH"),
+                        addendum_date=_date(date(2025, 4, 14)),
+                    ),
+                ),
+                _document(
+                    "invoice",
+                    NormalizedDocumentFieldsRecord(
+                        contract_no=_string("SPNM-SOH"),
+                    ),
+                ),
+            ]
+        )
+    )
+
+    assert _result_by_code(report, "R003").status == "skipped"
+    assert _result_by_code(report, "R003").message == (
+        "Separate contract document is missing or unreadable, so addendum and invoice contract numbers cannot be matched to it."
+    )
+    assert _result_by_code(report, "R005").status == "skipped"
+    assert _result_by_code(report, "R005").message == (
+        "Separate contract document date is missing, so the extracted addendum date cannot be compared to a contract date."
+    )
+
+
+def test_rule_r022_fails_when_bl_date_missing_but_coa_manufacture_date_exists() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "coa",
+                    NormalizedDocumentFieldsRecord(
+                        manufacture_date=_date(date(2026, 5, 28)),
+                    ),
+                ),
+                _document("mbl", NormalizedDocumentFieldsRecord()),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R022")
+
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert "BL date is missing" in result.message
+    assert result.observed_values["coa.manufacture_date"] == date(2026, 5, 28)
+    assert result.expected_values == {"mbl.bl_date": "required for final BL date comparison"}
+
+
+def test_rule_r022_skips_when_coa_manufacture_date_missing() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document("coa", NormalizedDocumentFieldsRecord()),
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(
+                        bl_date=_date(date(2026, 6, 1)),
+                    ),
+                ),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R022")
+
+    assert result.status == "skipped"
+    assert result.message == "COA manufacture date or BL date is missing."
+
+
+def test_rule_r006_skips_when_only_one_required_incoterms_value_is_available() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "invoice",
+                    NormalizedDocumentFieldsRecord(
+                        incoterms=_string("FOB"),
+                    ),
+                ),
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        incoterms=_string("FOB"),
+                    ),
+                ),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R006")
+
+    assert result.status == "skipped"
+    assert "only one required document" in result.message
+
+
+def test_rule_r017_fails_with_error_when_packing_container_number_is_missing() -> None:
+    report = run_rule_engine(_pack([_document("packing_list", NormalizedDocumentFieldsRecord())]))
+
+    result = _result_by_code(report, "R017")
+
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert result.message == "Packing list container number is missing."
+    assert result.observed_values == {"packing_list.container_no": None}
+
+
+def test_rule_r017_passes_when_packing_container_number_is_present() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        container_no=_string("MSKU1234567"),
+                    ),
+                )
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R017")
+
+    assert result.status == "passed"
+    assert result.severity == "error"
+
+
+def test_rule_r025_skipped_message_explains_partial_bl_packing_package_extraction() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(
+                        packages_quantity=_integer(80),
+                    ),
+                ),
+                _document("packing_list", NormalizedDocumentFieldsRecord()),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R025")
+
+    assert result.status == "skipped"
+    assert "package quantity comparison was skipped" in result.message
+
+
+def test_rule_r026_fails_when_bl_or_packing_container_number_is_missing() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(
+                        container_no=_string("MSKU1234567"),
+                    ),
+                ),
+                _document("packing_list", NormalizedDocumentFieldsRecord()),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R026")
+
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert "required container number is missing" in result.message
+    assert result.observed_values["mbl.container_no"] == "msku1234567"
+    assert result.expected_values == {
+        "mbl.container_no": "required",
+        "packing_list.container_no": "required",
+    }
+
+
+def test_rule_r026_fails_when_bl_and_packing_container_numbers_mismatch() -> None:
+    report = run_rule_engine(
+        _pack(
+            [
+                _document(
+                    "mbl",
+                    NormalizedDocumentFieldsRecord(
+                        container_no=_string("MSKU1234567"),
+                    ),
+                ),
+                _document(
+                    "packing_list",
+                    NormalizedDocumentFieldsRecord(
+                        container_no=_string("TCLU7654321"),
+                    ),
+                ),
+            ]
+        )
+    )
+
+    result = _result_by_code(report, "R026")
+
+    assert result.status == "failed"
+    assert result.severity == "error"
+    assert result.message == "BL container number does not match packing list."
+
+
+def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status(auth_headers: dict[str, str]) -> None:
     pack = document_pack_store.save(
         _pack(
             [
@@ -191,7 +659,7 @@ def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -
     )
     client = TestClient(app)
 
-    response = client.post(f"/api/validation/reports/{pack.pack_id}")
+    response = client.post(f"/api/validation/reports/{pack.pack_id}", headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -199,5 +667,5 @@ def test_validation_report_endpoint_runs_rule_engine_and_updates_pack_status() -
     assert body["summary"]["total_rules"] == 27
     assert document_pack_store.get(pack.pack_id).status in {"failed", "needs_review", "validated"}
 
-    mock_response = client.post("/api/validation/reports/mock")
+    mock_response = client.post("/api/validation/reports/mock", headers=auth_headers)
     assert mock_response.status_code == 200

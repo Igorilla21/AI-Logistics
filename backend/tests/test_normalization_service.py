@@ -6,6 +6,7 @@ from dynno_customs_api.models.domain import (
     DocumentPackRecord,
     OcrDocumentResultRecord,
     OcrPageResultRecord,
+    OcrTextLineRecord,
 )
 from dynno_customs_api.services import normalization_service
 from dynno_customs_api.services.document_pack_store import InMemoryDocumentPackStore
@@ -59,3 +60,61 @@ def test_normalize_document_pack_uses_ocr_raw_text_ref(monkeypatch) -> None:
     assert normalized.raw_text_ref == "storage/ocr/sample/invoice.txt"
     assert normalized.pages == 2
     assert normalized.metadata.ocr_provider == "tesseract"
+
+
+def test_normalize_document_pack_passes_line_level_ocr_into_extraction(monkeypatch) -> None:
+    store = InMemoryDocumentPackStore()
+    now = datetime.now(UTC)
+    document_id = uuid4()
+    pack = store.save(
+        DocumentPackRecord(
+            pack_id=uuid4(),
+            status="ocr_completed",
+            created_at=now,
+            updated_at=now,
+            files=[
+                DocumentFileRecord(
+                    document_id=document_id,
+                    file_name="invoice.pdf",
+                    stored_path="uploads/test/invoice.pdf",
+                    content_type="application/pdf",
+                    size_bytes=100,
+                    uploaded_at=now,
+                    sha256="b" * 64,
+                )
+            ],
+            ocr_results=[
+                OcrDocumentResultRecord(
+                    document_id=document_id,
+                    source_file_name="invoice.pdf",
+                    source_file_path="uploads/test/invoice.pdf",
+                    provider="tesseract",
+                    languages="eng",
+                    status="completed",
+                    pages=[
+                        OcrPageResultRecord(
+                            page_no=1,
+                            text="",
+                            lines=[
+                                OcrTextLineRecord(page_no=1, text="COMMERCIAL INVOICE"),
+                                OcrTextLineRecord(page_no=1, text="THE MANUFACTURER:"),
+                                OcrTextLineRecord(page_no=1, text="HENAN AIERFUKE CHEMICALS CO., LTD."),
+                                OcrTextLineRecord(page_no=1, text="THE BUYER: SOYUZOPTHIM LTD."),
+                            ],
+                        )
+                    ],
+                    raw_text="",
+                    raw_text_ref=None,
+                    created_at=now,
+                )
+            ],
+        )
+    )
+    monkeypatch.setattr(normalization_service, "document_pack_store", store)
+
+    updated_pack = normalization_service.normalize_document_pack(pack.pack_id)
+
+    normalized = updated_pack.normalized_documents[0]
+    assert normalized.fields.manufacturer_name.value == "HENAN AIERFUKE CHEMICALS CO., LTD"
+    assert normalized.fields.shipper_name.value == "HENAN AIERFUKE CHEMICALS CO., LTD"
+    assert normalized.fields.buyer_name.value == "SOYUZOPTHIM LTD"
